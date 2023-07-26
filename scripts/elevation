@@ -11,7 +11,7 @@ import pylas
 import numpy as np
 import os
 
-from dmr5g import Dmr5gParser
+from dmr5g import Dmr5gParser, WGS_TO_SJTSK
 
 def is_file_in_dir(dir_path, fn):
     
@@ -34,15 +34,33 @@ class Elevation:
         # Assuming 'req' is of type GetElevationPcd, which contains 'point' and 'radius' fields.
 
         # Either the tile file has been downloaded previously and is stored in cache.
+        radius = req.radius.data
         point = [req.point.x, req.point.y]
-        id = self.elev_data_parser.get_tile_id(point)
-        fn = self.elev_data_parser.get_tile_code(id) + ".laz"
+        ids = self.elev_data_parser.get_tile_ids(point, radius)
 
-        # Or we need to download it now.
-        if not is_file_in_dir(self.cache_dir, fn):
-            self.elev_data_parser.download_tile(point)
+        pcd_data = None
 
-        pcd_data = self.elev_data_parser.get_tile_data(fn)
+        for id in ids:
+            fn = self.elev_data_parser.get_tile_code(id) + ".laz"
+
+            # Or we need to download it now.
+            if not is_file_in_dir(self.cache_dir, fn):
+                self.elev_data_parser.download_tile(id)
+
+            tile_data = self.elev_data_parser.get_tile_data(fn)
+
+            if pcd_data is None:
+                pcd_data = np.copy(tile_data)
+            else:
+                pcd_data = np.concatenate((pcd_data,tile_data))
+
+        point_sjtsk = WGS_TO_SJTSK.transform(point[1],point[0])
+        dists = ((pcd_data['x'] - point_sjtsk[0])**2 + (pcd_data['y'] - point_sjtsk[1])**2)**(1/2)
+        pcd_data = pcd_data[dists <= radius]
+
+        pcd_data['x'] = pcd_data['x'] - np.mean(pcd_data['x'])
+        pcd_data['y'] = pcd_data['y'] - np.mean(pcd_data['y'])
+        pcd_data['z'] = pcd_data['z'] - np.mean(pcd_data['z'])
 
         msg = ros_numpy.msgify(PointCloud2, pcd_data)
 

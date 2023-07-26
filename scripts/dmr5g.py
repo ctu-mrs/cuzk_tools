@@ -17,6 +17,23 @@ WGS_TO_SJTSK = pyproj.Transformer.from_crs(WGS,SJTSK)
 class PointOutOfTileError(Exception):
     pass
 
+class Circle():
+    def __init__(self,center,radius):
+        self.x = center.x
+        self.y = center.y
+        self.r = radius
+
+class Rectangle():
+    def __init__(self,points):
+        l = points[0][0]
+        b = points[1][0]
+        r = points[0][1]
+        t = points[1][2]
+        self.x = (l+r)/2
+        self.y = (b+t)/2
+        self.w = r-l
+        self.h = t-b
+ 
 
 class Dmr5gParser():
     def __init__(self, cache_dir, fetch_xml=False) -> None:
@@ -135,8 +152,46 @@ class Dmr5gParser():
                 return id
         else:
             raise PointOutOfTileError("No tile found which could contain the point {}.".format(point))
+        
+    def c_r_intersects(self, circle, rect):
+        # https://stackoverflow.com/questions/401847/circle-rectangle-collision-detection-intersection
+        circleDistanceX = abs(circle.x - rect.x)
+        circleDistanceY = abs(circle.y - rect.y)
 
+        if circleDistanceX > (rect.w / 2 + circle.r):
+            return False
+        if circleDistanceY > (rect.h / 2 + circle.r):
+            return False
 
+        if circleDistanceX <= (rect.w / 2):
+            return True
+        if circleDistanceY <= (rect.h / 2):
+            return True
+
+        cornerDistance_sq = (circleDistanceX - rect.w / 2) ** 2 + (circleDistanceY - rect.h / 2) ** 2
+
+        return cornerDistance_sq <= (circle.r ** 2)
+
+        
+    def get_tile_ids(self, point, radius):        
+        
+        necessary_num_near_tiles = int((2+2*np.floor((1.1+np.floor(radius/1000))/2))**2)
+        tile_ids = list(self.tile_idx.nearest(point, necessary_num_near_tiles))
+
+        point_sjtsk = Point(WGS_TO_SJTSK.transform(point[1], point[0]))
+
+        ids = []
+
+        for id in tile_ids:
+            tile = self.get_tile(id)
+            tile_sjtsk = Polygon(np.array(WGS_TO_SJTSK.transform(np.array(tile)[:,0], np.array(tile)[:,1])).T)
+            tile_sjtsk_fixed = self.fix_tile_coords(tile_sjtsk)
+
+            if self.c_r_intersects(Circle(point_sjtsk, radius), Rectangle(tile_sjtsk_fixed.exterior.coords.xy)):
+                ids.append(id)
+
+        return ids
+        
     def get_tile_code(self,id):
         tile_url = self.get_tile_xml(id)
         tile_id_index = tile_url.find("CUZK_DMR5G-SJTSK_") + len("CUZK_DMR5G-SJTSK_")
@@ -159,9 +214,8 @@ class Dmr5gParser():
         
         return zip_url
 
-    def download_tile(self,point):
-        id = self.get_tile_id(point)
-        #d = self.get_intersection_tile_ids(point)
+    def download_tile(self,id):
+        #id = self.get_tile_id(point)
         tile_zip = self.get_tile_zip(id)
         tile_code = self.get_tile_code(id)
         tile_zip_fn = self.cache_dir + tile_code + ".zip"
@@ -185,9 +239,9 @@ class Dmr5gParser():
             ('y', np.float32),
             ('z', np.float32)])
         
-        pcd_data['x'] = las.x - np.mean(las.x)#(las.x - np.mean(las.x))/np.std(las.x)
-        pcd_data['y'] = las.y - np.mean(las.y)#(las.y - np.mean(las.y))/np.std(las.y)
-        pcd_data['z'] = las.z - np.mean(las.z)#(las.z - np.mean(las.z))/np.std(las.z)
+        pcd_data['x'] = las.x#(las.x - np.mean(las.x))/np.std(las.x)
+        pcd_data['y'] = las.y#(las.y - np.mean(las.y))/np.std(las.y)
+        pcd_data['z'] = las.z#(las.z - np.mean(las.z))/np.std(las.z)
 
         return pcd_data
 
