@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+
+import rospy
+import ros_numpy
+import std_msgs
+
+from sensor_msgs.msg import PointCloud2
+from elevation.srv import GetElevationPcd,GetElevationPcdResponse
+
+import pylas
+import numpy as np
+import os
+
+from dmr5g import Dmr5gParser
+
+def is_file_in_dir(dir_path, fn):
+    
+    file_path = os.path.join(dir_path, fn)
+    
+    return os.path.exists(file_path)
+
+class Elevation:
+    def __init__(self):
+        rospy.init_node('elevation')
+
+        self.cache_dir = "/home/aherold/ws/src/elevation/cache/"
+        self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
+        
+        self.elev_pcd_pub = rospy.Publisher('elevation_pcd', PointCloud2, queue_size=10, latch=True)
+
+        rospy.Service('elevation', GetElevationPcd, self.handle_elevation_service)
+
+    def handle_elevation_service(self, req):
+        # Assuming 'req' is of type GetElevationPcd, which contains 'point' and 'radius' fields.
+
+        # Either the tile file has been downloaded previously and is stored in cache.
+        point = [req.point.x, req.point.y]
+        id = self.elev_data_parser.get_tile_id(point)
+        fn = self.elev_data_parser.get_tile_code(id) + ".laz"
+
+        # Or we need to download it now.
+        if not is_file_in_dir(self.cache_dir, fn):
+            self.elev_data_parser.download_tile(point)
+
+        pcd_data = self.elev_data_parser.get_tile_data(fn)
+
+        msg = ros_numpy.msgify(PointCloud2, pcd_data)
+
+        header = std_msgs.msg.Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = "utm"
+
+        msg.header = header
+
+        self.elev_pcd_pub.publish(msg)
+
+        # Return empty-ish response.
+        response = GetElevationPcdResponse()
+        return response
+
+
+if __name__ == "__main__":
+    node = Elevation()
+    rospy.spin()
