@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>elevation</name>
+  <name>cuzk_tools</name>
   <version>0.0.0</version>
-  <description>The elevation package</description>
+  <description>The cuzk_tools package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -66,6 +66,8 @@
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-shapely</exec_depend>
   <exec_depend>python3-rtree</exec_depend>
+  <exec_depend>python3-fiona</exec_depend>
+
   <!-- exec_depend>python3-pylas</exec_depend> does not resolve...-->
   <!-- exec_depend>python3-lazrs==0.1.1</exec_depend> does not resolve...-->
   <exec_depend>python3-pyproj</exec_depend>
