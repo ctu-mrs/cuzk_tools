@@ -62,11 +62,15 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>jsk_recognition_msgs</exec_depend>
+  
+  <exec_depend>jsk_rviz_plugins</exec_depend>
 
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-shapely</exec_depend>
   <exec_depend>python3-rtree</exec_depend>
-  <exec_depend>python3-fiona</exec_depend>
+  <!--exec_depend>python3-fiona NEEDS A NEWER VERSION THAN THE ONE INSTALLED BY ROSDEP</exec_depend-->
+  <exec_depend>python3-tqdm</exec_depend>
 
   <!-- exec_depend>python3-pylas</exec_depend> does not resolve...-->
   <!-- exec_depend>python3-lazrs==0.1.1</exec_depend> does not resolve...-->

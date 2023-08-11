@@ -1,0 +1,292 @@
+#!/usr/bin/env python
+
+import rospy
+import ros_numpy
+import std_msgs
+
+from cuzk_tools.msg import Polygons, LineString, LineStringArray, PointArray, TopographyCategory
+from cuzk_tools.msg import Topography as TopographyMsg
+
+from jsk_recognition_msgs.msg import PolygonArray
+from sensor_msgs.msg import PointCloud2
+from geometry_msgs.msg import Polygon, PolygonStamped, Point32, Point
+from cuzk_tools.srv import GetTopography,GetTopographyResponse
+
+import pylas
+import fiona
+from tqdm import tqdm
+import numpy as np
+import os
+import math
+import shapely.geometry as shap
+
+from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str
+from dmr5g import WGS_TO_SJTSK
+
+SCALE = 1/100
+
+class Topography:
+    def __init__(self, vis_bool=True):
+        rospy.init_node('topography')
+
+        self.data_dir = "/home/aherold/ws/src/cuzk_tools/data/gpkg_files/"
+        
+        self.topography_msg = self.init_topography_msg()
+
+        self.topography_pub = rospy.Publisher('topography', TopographyMsg, queue_size=10, latch=True)
+
+        self.vis_pubs = dict()
+        if vis_bool:
+            for c in categories_str:
+                pub_name = 'topography'+'/'+c
+                self.vis_pubs[c] = rospy.Publisher(pub_name, PolygonArray, queue_size=10, latch=True)
+                                    
+        rospy.Service('topography', GetTopography, self.handle_topography_service)
+
+    def init_topography_msg(self):
+        msg = TopographyMsg()
+
+        for c in categories_str:
+            c_msg = TopographyCategory()
+            point_msg = PointArray()
+            ls_msg = LineStringArray()
+            poly_msg = PolygonArray()
+
+            c_msg.name = c
+            c_msg.points = point_msg
+            c_msg.linestrings = ls_msg
+            c_msg.polygons = poly_msg
+
+            msg.categories.append(c_msg)
+
+        return msg
+    
+    def add_header(self, msg, frame):
+        header = std_msgs.msg.Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = frame
+        
+        msg.header = header
+
+        return msg 
+    
+    def point2polygon(self, point, radius):
+        x, y = point.x,point.y
+
+        polygon = [] # an octagon to be precise
+        for i in range(8):
+            angle = i * math.pi / 4
+            new_x = x + radius * math.cos(angle)
+            new_y = y + radius * math.sin(angle)
+            polygon.append((new_x, new_y))
+
+        return polygon
+    
+    def linestring2polygon(self, ls, dist):
+        points = [(lsp.x, lsp.y) for lsp in ls.points]
+        shap_ls = shap.LineString(points)
+        poly = shap_ls.buffer(dist)
+
+        try:
+            return list(poly.exterior.coords)
+        except:
+            conc_poly = []
+            for pol in poly.geoms:
+                conc_poly += list(pol.exterior.coords)
+            return conc_poly
+    
+
+    def data2poly_msg(self, data, center_point=None):
+        points = [None] * len(data)
+        
+        for i,row in enumerate(data):
+            p = Point32()
+
+            if not center_point is None:
+                p.x = (row[0] - center_point[0]) * SCALE
+                p.y = (row[1] - center_point[1]) * SCALE
+                p.z = 0.
+
+            else:
+                p.x = row[0]
+                p.y = row[1]
+                p.z = 0.
+
+            points[i] = p
+
+        poly = Polygon()
+        poly.points = points
+        
+        poly_stamped = PolygonStamped()
+        poly_stamped = self.add_header(poly_stamped, "sjtsk")
+
+        
+        poly_stamped.polygon = poly
+        
+        return poly_stamped
+    
+    def visualize_topography_msg(self, msg):
+        for c_msg in msg.categories:
+            poly_arr = PolygonArray()
+            msg = self.add_header(poly_arr, "sjtsk")
+
+            for p in c_msg.points.points:
+                poly = self.point2polygon(p,2 * SCALE)
+                
+                poly_msg = self.data2poly_msg(poly,None)
+
+                poly_arr.polygons.append(poly_msg)
+
+            for ls in c_msg.linestrings.linestrings:
+                poly = self.linestring2polygon(ls,2 * SCALE)
+
+                poly_msg = self.data2poly_msg(poly,None)
+
+                poly_arr.polygons.append(poly_msg)
+
+            for poly_msg in c_msg.polygons.polygons:
+                poly_arr.polygons.append(poly_msg)
+
+            self.vis_pubs[c_msg.name].publish(poly_arr)
+            
+    
+    def handle_topography_service(self, req):
+        # Assuming 'req' is of type GetTopography, which contains 'point' and 'radius' fields.
+
+        radius = req.radius.data
+        point = [req.point.x, req.point.y]
+        point_sjtsk = WGS_TO_SJTSK.transform(point[1],point[0])
+
+        x_min = point_sjtsk[0] - radius
+        y_min = point_sjtsk[1] - radius
+        x_max = point_sjtsk[0] + radius
+        y_max = point_sjtsk[1] + radius
+
+        rects = get_rects(x_min,y_min,x_max,y_max,H,W)
+
+        for rect in rects:
+            fn = self.data_dir  + 'topography' + '_' \
+                                + str(rect[0])[1:] + '_' \
+                                + str(rect[1])[1:] + '_' \
+                                + str(rect[2])[1:] + '_' \
+                                + str(rect[3])[1:]
+            
+            #BudovaJednotlivaNeboBlokBudov
+            for layer_name in fiona.listlayers(fn):
+
+                category_name = layer_name.split('_')[0]
+                category_ind = categories_str.index(category_name)
+
+                geom_name = layer_name.split('_')[1]
+
+                with fiona.open(fn, layer=layer_name) as layer:
+
+                    print(category_name)
+                    print(geom_name)
+                    print(len(layer))
+
+                    if geom_name == "point":
+                        msg = self.topography_msg.categories[category_ind].points
+                        #msg = PointArray()
+                        #msg = self.add_header(msg, "sjtsk")
+                        
+                    elif geom_name == "multilinestring":
+                        msg = self.topography_msg.categories[category_ind].linestrings
+                        #msg = LineStringArray()
+                        #msg = self.add_header(msg, "sjtsk")
+
+                    elif geom_name == "multipolygon":
+                        msg = self.topography_msg.categories[category_ind].polygons
+                        #msg = PolygonArray()
+                        #msg = self.add_header(msg, "sjtsk")
+
+                    else:
+                        raise NotImplementedError("You whoopsed up, buck-o.")
+
+                    for feature in tqdm(layer):
+
+                        coords = feature['geometry']['coordinates']
+                        geom_type = feature['geometry']['type']
+
+                        if geom_type == 'Point':
+                            #raise TypeError("Not yet implemented for {}.".format(geom_type))
+
+                            data = coords
+
+                            dists = ((data[0] - point_sjtsk[0])**2 + (data[1] - point_sjtsk[1])**2)**(1/2)
+                            if not np.any(dists<radius):
+                                continue
+
+                            point_msg = Point()
+                            point_msg.x = (data[0] - point_sjtsk[0]) * SCALE
+                            point_msg.y = (data[1] - point_sjtsk[1]) * SCALE
+                            point_msg.z = 0.
+
+                            msg.points.append(point_msg)
+
+
+                        elif geom_type == 'MultiLineString':
+                            #raise TypeError("Not yet implemented for {}.".format(geom_type))
+                            if len(coords) > 1:
+                                print("Aw shucks")
+
+                            data = np.array(coords[0])
+                            num_points = len(data)
+
+                            dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
+                            
+                            if not np.any(dists<radius):
+                                continue
+
+                            points = [None] * num_points
+                            
+                            for i,row in enumerate(data):
+                                p = Point()
+                                p.x = (row[0] - point_sjtsk[0]) * SCALE
+                                p.y = (row[1] - point_sjtsk[1]) * SCALE
+                                p.z = 0.
+                                points[i] = p
+                            
+                            ls = LineString()
+                            ls.points = points
+                            ls = self.add_header(ls, "sjtsk")
+
+                            msg.linestrings.append(ls)
+
+                        elif geom_type == 'MultiPolygon':
+                            data = np.array(coords[0][0])
+                            num_points = len(data)
+                            
+
+                            dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
+                            
+                            if not np.any(dists<radius):
+                                continue
+
+                            poly_stamped = self.data2poly_msg(data, point_sjtsk)
+                            
+                            msg.polygons.append(poly_stamped)
+                        
+                        else:
+                            raise TypeError("Expected types are MultiLineString, MultiPolygon and Point. Got {} instead.".format(geom_type))
+
+                    """ if geom_name == "point":
+                        self.topography_msg.categories[category_ind].points = msg
+                    elif geom_name == "multilinestring":
+                        self.topography_msg.categories[category_ind].linestrings = msg
+                    elif geom_name == "multipolygon":
+                        self.topography_msg.categories[category_ind].polygons = msg
+                    else:
+                        raise NotImplementedError("This is literally impossible. Congratulations!") """
+
+        self.topography_pub.publish(self.topography_msg)
+        self.visualize_topography_msg(self.topography_msg)
+
+        # Return empty-ish response.
+        response = GetTopographyResponse()
+        return response
+
+
+if __name__ == "__main__":
+    node = Topography()
+    rospy.spin()

@@ -5,7 +5,7 @@ import ros_numpy
 import std_msgs
 
 from sensor_msgs.msg import PointCloud2
-from elevation.srv import GetElevationPcd,GetElevationPcdResponse
+from cuzk_tools.srv import GetElevationPcd,GetElevationPcdResponse
 
 import pylas
 import numpy as np
@@ -66,7 +66,7 @@ class Elevation:
 
         header = std_msgs.msg.Header()
         header.stamp = rospy.Time.now()
-        header.frame_id = "utm"
+        header.frame_id = "sjtsk"
 
         msg.header = header
 

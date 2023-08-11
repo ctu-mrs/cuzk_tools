@@ -263,18 +263,6 @@ class Dmr5gParser():
             plt.ylabel('Y')
             plt.title('Point Cloud Visualization')
             plt.show()
-    
-
-if __name__ == "__main__":
-    point = (14.4180764, 50.0762969)
-    point_sjtsk = WGS_TO_SJTSK.transform(point[1],point[0])
-
-    cache_dir = "/home/aherold/ws/src/elevation/cache/"
-
-    dmr5g = Dmr5gParser(cache_dir)
-    tile_fn = dmr5g.download_tile(point)
-    print(dmr5g.get_tile_id(point))
-    dmr5g.visualize_laz(tile_fn)
 
 
 
