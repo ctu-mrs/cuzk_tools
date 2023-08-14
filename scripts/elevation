@@ -23,7 +23,7 @@ class Elevation:
     def __init__(self):
         rospy.init_node('elevation')
 
-        self.cache_dir = "/home/aherold/ws/src/elevation/cache/"
+        self.cache_dir = "/home/aherold/ws/src/cuzk_tools/cache/"
         self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
         
         self.elev_pcd_pub = rospy.Publisher('elevation_pcd', PointCloud2, queue_size=10, latch=True)

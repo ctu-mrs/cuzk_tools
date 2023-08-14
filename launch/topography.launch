@@ -1,6 +1,6 @@
 <launch>   
-    <!-- <node pkg="rviz" type="rviz" name="rviz" args="-d $(find cuzk_tools)/rviz/polygon_array.rviz" output="screen">
-    </node> -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find cuzk_tools)/rviz/topography_vis.rviz" output="screen">
+    </node>
 
     <node pkg="cuzk_tools" type="topography" name="topography" output="screen">
     </node>
