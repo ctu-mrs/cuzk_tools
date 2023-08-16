@@ -12,7 +12,23 @@ import numpy as np
 
 SJTSK = "EPSG:5514"
 WGS = "EPSG:4326"
+UTM_33U = "EPSG:32633"
+
 WGS_TO_SJTSK = pyproj.Transformer.from_crs(WGS,SJTSK)
+SJTSK_TO_WGS = pyproj.Transformer.from_crs(SJTSK,WGS)
+SJTSK_TO_UTM_33U = pyproj.Transformer.from_crs(SJTSK,UTM_33U)
+
+def get_sjtsk_to_utm_trans(utm_letter, utm_num):
+    if utm_letter == "N":
+        utm = "EPSG:326" + str(utm_num)
+    elif utm_letter == "S":
+        utm = "EPSG:327" + str(utm_num)
+    else:
+        raise UTMZoneError("utm letter '{}' is not one of (N,S).".format(utm_letter, utm_num))
+    return pyproj.Transformer.from_crs(SJTSK,utm)
+
+class UTMZoneError(Exception):
+    pass
 
 class PointOutOfTileError(Exception):
     pass
@@ -213,9 +229,16 @@ class Dmr5gParser():
         zip_url = entry.find(f"{{{self.namespace['atom']}}}id").text
         
         return zip_url
-
+    
+    def get_tile_update_date(self,id):
+        for i,entry in enumerate(self.root.iter(f"{{{self.namespace['atom']}}}entry")):
+            if i == id:
+                update_date = entry.find(f"{{{self.namespace['atom']}}}updated").text
+                return update_date
+            
     def download_tile(self,id):
         #id = self.get_tile_id(point)
+        tile_update_date = self.get_tile_update_date(id)
         tile_zip = self.get_tile_zip(id)
         tile_code = self.get_tile_code(id)
         tile_zip_fn = self.cache_dir + tile_code + ".zip"
@@ -235,9 +258,9 @@ class Dmr5gParser():
             las = f.read()
 
         pcd_data = np.zeros(f.header.point_count, dtype=[
-            ('x', np.float32),
-            ('y', np.float32),
-            ('z', np.float32)])
+            ('x', np.float64),
+            ('y', np.float64),
+            ('z', np.float64)])
         
         pcd_data['x'] = las.x#(las.x - np.mean(las.x))/np.std(las.x)
         pcd_data['y'] = las.y#(las.y - np.mean(las.y))/np.std(las.y)
