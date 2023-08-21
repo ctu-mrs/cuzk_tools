@@ -10,6 +10,7 @@ project(cuzk_tools)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
+  geometry_msgs
   std_msgs
   jsk_recognition_msgs
   message_generation
@@ -66,7 +67,8 @@ add_service_files(
    ElevationPublish.srv
    GetTopography.srv
    MarkerGet.srv
-
+   PoseElevationGet.srv
+   ElevationSetTF.srv
    )
 
 ## Generate actions in the 'action' folder

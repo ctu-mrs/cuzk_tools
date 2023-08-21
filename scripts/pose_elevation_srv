@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+
+import rospy
+import ros_numpy
+import std_msgs
+import tf2_ros
+
+from copy import deepcopy
+
+from sensor_msgs.msg import PointCloud2, PointField
+import sensor_msgs.point_cloud2 as pc2
+from std_msgs.msg import String
+from visualization_msgs.msg import Marker
+
+from cuzk_tools.srv import PoseElevationGet,PoseElevationGetResponse
+
+import json
+import pylas
+import numpy as np
+import os
+import struct
+from scipy.spatial import cKDTree
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+
+
+from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+from orto import get_img
+from img2rgb import img2rgb
+from elevation_class import Elevation,UnsupportedFrameError
+
+
+class PoseElevation(Elevation):
+    def __init__(self, default_utm_zone):
+        rospy.init_node('pose_elevation_srv')
+
+        self.utm_frame = "utm"
+        self.utm_local_frame = "utm_local"
+
+        self.cache_dir = "/home/aherold/ws/src/cuzk_tools/cache/"
+        self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
+
+        self.utm_zone = default_utm_zone
+        self.utm_zone_sub = rospy.Subscriber("utm_zone", String, self.update_utm_zone, queue_size=10)
+
+        self.utm_local_trans = None
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        
+        rospy.Service('pose_elevation_get', PoseElevationGet, self.handle_pose_elevation)
+
+        self.tile_id = None
+        self.tree = None
+        self.tile_data = None
+    
+    def handle_pose_elevation(self, req):
+        position = [req.position.position.x, req.position.position.y]
+        frame = req.frame.data
+
+        sjtsk_coords = [0.,0.]
+
+        response = PoseElevationGetResponse()
+
+        # Transform coordinates to S-JTSK.
+
+        if frame == "sjtsk":
+            sjtsk_coords = position
+
+        elif frame == "utm":
+            if self.utm_zone is None:
+                raise ValueError("utm_zone has not been set.")
+            sjtsk_coords = get_utm_to_sjtsk_trans(self.utm_zone[2], self.utm_zone[:2]).transform(position[0],position[1])
+
+        elif frame == "utm_local":
+            try:
+                self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
+            except:
+                rospy.logwarn("utm_local: Cannot obtain transform (utm, utm_local).")
+                if self.utm_local_trans is not None:
+                    rospy.logwarn("utm_local: Using last known transform.")
+                else:
+                    rospy.logwarn("utm_local: Returning default pose msg.")
+                    return response
+                
+            position[0] += self.utm_local_trans.transform.translation.x
+            position[1] += self.utm_local_trans.transform.translation.y
+
+            if self.utm_zone is None:
+                raise ValueError("utm_zone has not been set.")
+            
+            sjtsk_coords = get_utm_to_sjtsk_trans(self.utm_zone[2], self.utm_zone[:2]).transform(position[0],position[1])
+        
+        elif frame == "wgs":
+            sjtsk_coords = WGS_TO_SJTSK.transform(position[1],position[0])
+
+        else:
+            raise UnsupportedFrameError("Frame {} is not one of ('sjtsk','utm','utm_local','wgs').".format(frame))
+        
+        # Get tile containing robot position.
+        tile_id = self.elev_data_parser.get_tile_ids(sjtsk_coords, 0)[0]
+
+        # If tile is new, open it, create cKDTree (x,y only), save it.
+        if tile_id == self.tile_id:
+            pass
+        else:
+            self.tile_data = self.get_data(sjtsk_coords,None)
+            self.tile_data = self.tile_data.view((np.float64,len(self.tile_data.dtype.names)))
+            self.tree = cKDTree(self.tile_data[:,:2])
+            self.tile_id = tile_id
+
+        # Use (saved) cKDTree to find nearest point.
+        _,inds = self.tree.query(sjtsk_coords, k=10)
+        nearest_points = self.tile_data[inds,:]
+
+        # Interpolate to obtain elevation.
+    
+        elevation = self.interpolate_elevation(sjtsk_coords, nearest_points)
+
+        # Create response with x,y,z. 
+        response.position.position.x = req.position.position.x
+        response.position.position.y = req.position.position.y
+        response.position.position.z = elevation
+
+        return response
+    
+    def interpolate_elevation(self, point, near_points):
+        try:
+            interpolator = LinearNDInterpolator(near_points[:,:2], near_points[:,2])
+        except:
+            rospy.logwarn("Using nearest interpolation instead of linear due to error.")
+            interpolator = NearestNDInterpolator(near_points[:,:2], near_points[:,2])
+
+        elevation = interpolator(point)
+
+        if np.isnan(elevation):
+            rospy.logwarn("Using nearest interpolation instead of linear due to nan.")
+            interpolator = NearestNDInterpolator(near_points[:,:2], near_points[:,2])
+            elevation = interpolator(point)
+        
+        return elevation
+
+if __name__ == "__main__":
+    default_utm_zone = rospy.get_param('/pose_elevation_srv/default_utm_zone', None)
+    node = PoseElevation(default_utm_zone)
+    rospy.spin()

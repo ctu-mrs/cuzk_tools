@@ -8,6 +8,7 @@ import pylas
 import matplotlib.pyplot as plt
 import pyproj
 import os
+import json
 import numpy as np
 
 SJTSK = "EPSG:5514"
@@ -26,6 +27,15 @@ def get_sjtsk_to_utm_trans(utm_letter, utm_num):
     else:
         raise UTMZoneError("utm letter '{}' is not one of (N,S).".format(utm_letter, utm_num))
     return pyproj.Transformer.from_crs(SJTSK,utm)
+
+def get_utm_to_sjtsk_trans(utm_letter, utm_num):
+    if utm_letter == "N":
+        utm = "EPSG:326" + str(utm_num)
+    elif utm_letter == "S":
+        utm = "EPSG:327" + str(utm_num)
+    else:
+        raise UTMZoneError("utm letter '{}' is not one of (N,S).".format(utm_letter, utm_num))
+    return pyproj.Transformer.from_crs(utm,SJTSK)
 
 class UTMZoneError(Exception):
     pass
@@ -189,12 +199,12 @@ class Dmr5gParser():
         return cornerDistance_sq <= (circle.r ** 2)
 
         
-    def get_tile_ids(self, point, radius):        
-        
-        necessary_num_near_tiles = int((2+2*np.floor((1.1+np.floor(radius/1000))/2))**2)
-        tile_ids = list(self.tile_idx.nearest(point, necessary_num_near_tiles))
+    def get_tile_ids(self, point_sjtsk, radius):        
 
-        point_sjtsk = Point(WGS_TO_SJTSK.transform(point[1], point[0]))
+        point_wgs = SJTSK_TO_WGS.transform(point_sjtsk[0],point_sjtsk[1])
+
+        necessary_num_near_tiles = int((2+2*np.floor((1.1+np.floor(radius/1000))/2))**2)
+        tile_ids = list(self.tile_idx.nearest((point_wgs[1],point_wgs[0]), necessary_num_near_tiles))
 
         ids = []
 
@@ -203,7 +213,7 @@ class Dmr5gParser():
             tile_sjtsk = Polygon(np.array(WGS_TO_SJTSK.transform(np.array(tile)[:,0], np.array(tile)[:,1])).T)
             tile_sjtsk_fixed = self.fix_tile_coords(tile_sjtsk)
 
-            if self.c_r_intersects(Circle(point_sjtsk, radius), Rectangle(tile_sjtsk_fixed.exterior.coords.xy)):
+            if self.c_r_intersects(Circle(Point(point_sjtsk), radius), Rectangle(tile_sjtsk_fixed.exterior.coords.xy)):
                 ids.append(id)
 
         return ids
@@ -238,7 +248,6 @@ class Dmr5gParser():
             
     def download_tile(self,id):
         #id = self.get_tile_id(point)
-        tile_update_date = self.get_tile_update_date(id)
         tile_zip = self.get_tile_zip(id)
         tile_code = self.get_tile_code(id)
         tile_zip_fn = self.cache_dir + tile_code + ".zip"
@@ -247,6 +256,18 @@ class Dmr5gParser():
         urlretrieve(tile_zip, tile_zip_fn)
         
         with zipfile.ZipFile(tile_zip_fn, 'r') as zip_ref:
+
+            with open('src/cuzk_tools/cache/update_dates.json', 'r') as upd_f:
+                try:
+                    update_dict = json.load(upd_f)
+                except:
+                    update_dict = dict()
+
+            with open('src/cuzk_tools/cache/update_dates.json', 'w') as upd_f:
+                update_date = self.get_tile_update_date(id)
+                update_dict[tile_code] = update_date
+                upd_f.write(json.dumps(update_dict))
+
             file_name = zip_ref.namelist()[0]
             zip_ref.extract(file_name,self.cache_dir)
             os.rename(self.cache_dir + file_name, tile_laz_fn)
