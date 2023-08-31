@@ -2,7 +2,7 @@
     <arg name="default_utm_zone" default="33N" />
 
     <node pkg="tf2_ros" type="static_transform_publisher" name="static_tf_fake" args="428333 5539106 0 0 0 0 utm utm_local" />
-    <node pkg="tf2_ros" type="static_transform_publisher" name="base_link_utm_local_fake" args="100 100 0 0 0 0 utm_local base_link_fake" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base_link_utm_local_fake" args="42202 -29073 0 0 0 0 utm_local base_link_fake" />
 
     <node pkg="rviz" type="rviz" name="rviz" args="-d $(find cuzk_tools)/rviz/elevation.rviz" output="screen">
     </node>
@@ -20,6 +20,18 @@
         <param name="default_followed_tf" type="string" value="base_link"/>
     </node>
 
-    <node pkg="cuzk_tools" type="marker_pub" name="marker_pub" output="screen">
+    <!-- <node pkg="cuzk_tools" type="marker_pub" name="marker_pub" output="screen">
+    </node> -->
+
+    <node pkg="cuzk_tools" type="pcd2mesh" name="pcd2mesh" output="screen">
+        <param name="pcd_topic" type="string" value="elevation_utm_local"/>
+        <param name="default_utm_zone" type="string" value="$(arg default_utm_zone)"/>
+        <param name="default_hole_filling_power" type="double" value="20."/>
     </node>
+
+    <!-- <node pkg="$(find vigir_point_cloud_proc)" type="cloud_to_mesh_node" name="cloud_to_mesh_node" output="screen" respawn="true">
+        <remap from="~/cloud" to="/elevation_utm_local" />
+    </node> -->
+    <!-- <include file="$(find vigir_point_cloud_proc)/pcd2mesh.launch"/> -->
+
 </launch>    

@@ -53,17 +53,27 @@
   <build_depend>sensor_msgs</build_depend>
   <build_depend>geometry_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>geographic_msgs</build_depend>
+
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
   <build_export_depend>geometry_msgs</build_export_depend>
+  <build_export_depend>geographic_msgs</build_export_depend>
 
   
   <exec_depend>rospy</exec_depend>
+  <exec_depend>unique_id</exec_depend>
+  <exec_depend>osm_cartography</exec_depend>
   <exec_depend>ros_numpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geographic_msgs</exec_depend>
+
+  <exec_depend>vigir_point_cloud_proc</exec_depend>
+
+
   <exec_depend>jsk_recognition_msgs</exec_depend>
   
   <exec_depend>jsk_rviz_plugins</exec_depend>
@@ -75,8 +85,11 @@
   <exec_depend>python3-tqdm</exec_depend>
 
   <!-- exec_depend>python3-pylas</exec_depend> does not resolve...-->
+  <!-- exec_depend>python3-open3d 0.10.0 </exec_depend> is not available for FOCAL distro...-->
   <!-- exec_depend>python3-lazrs==0.1.1</exec_depend> does not resolve...-->
   <exec_depend>python3-pyproj</exec_depend>
+  <!-- exec_depend>python3-trimesh</exec_depend does not resolve-->
+  <!-- exec_depend>python3-pymeshfix</exec_depend does not resolve-->
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>

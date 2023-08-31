@@ -1,4 +1,4 @@
 geometry_msgs/Point point
 std_msgs/Float64 radius
 ---
-#sensor_msgs/PointCloud2 elevation
+geographic_msgs/GeographicMap map

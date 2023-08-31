@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   geometry_msgs
+  geographic_msgs
   std_msgs
   jsk_recognition_msgs
   message_generation
@@ -55,6 +56,7 @@ add_message_files(
    Polygons.msg
    LineString.msg
    LineStringArray.msg
+   OrtoImage.msg
    PointArray.msg
    Topography.msg
    TopographyCategory.msg
@@ -67,7 +69,8 @@ add_service_files(
    ElevationPublish.srv
    GetTopography.srv
    MarkerGet.srv
-   PoseElevationGet.srv
+   PointElevationGet.srv
+   GeoPointElevationGet.srv
    ElevationSetTF.srv
    )
 
@@ -84,6 +87,7 @@ generate_messages(
    sensor_msgs
    std_msgs
    geometry_msgs
+   geographic_msgs
    jsk_recognition_msgs
 )
 

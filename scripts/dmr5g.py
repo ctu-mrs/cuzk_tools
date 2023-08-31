@@ -10,6 +10,8 @@ import pyproj
 import os
 import json
 import numpy as np
+import requests
+import rospy
 
 SJTSK = "EPSG:5514"
 WGS = "EPSG:4326"
@@ -43,6 +45,9 @@ class UTMZoneError(Exception):
 class PointOutOfTileError(Exception):
     pass
 
+class NoXMLFileError(Exception):
+    pass
+
 class Circle():
     def __init__(self,center,radius):
         self.x = center.x
@@ -62,17 +67,19 @@ class Rectangle():
  
 
 class Dmr5gParser():
-    def __init__(self, cache_dir, fetch_xml=False) -> None:
+    """
+    Handles DMR5G data and files. Includes calculating which tile(s) to fetch for a given point and radius,
+    downloading and caching tiles' files from the internet. Is used by ROS nodes dealing with 'elevation'. 
+    """
+    def __init__(self, cache_dir) -> None:
+        """
+        Prepare the DMR5G XML file, which contains a link to each tile's own XML file and its boundaries.
+        """
         self.cache_dir = cache_dir
         self.xml_url = "https://atom.cuzk.cz/DMR5G-SJTSK/DMR5G-SJTSK.xml"
         self.xml_fn = self.cache_dir + "DMR5G-SJTSK.xml"
-        
-        if fetch_xml or not os.path.exists(self.xml_fn):
-            _, self.xml_data = self.open_url(self.xml_url)
-            self.root = ET.fromstring(self.xml_data)
-        else:
-            tree = ET.parse(self.xml_fn)
-            self.root = tree.getroot()
+
+        self.get_dmr5g_xml()
 
         self.namespace = {
             'atom': 'http://www.w3.org/2005/Atom',
@@ -83,6 +90,49 @@ class Dmr5gParser():
 
         self.tile_idx, self.tile_polygons = self.get_tiles()
 
+    def get_dmr5g_xml(self):
+        # Check if the main XML file has been modified from the one in cache.
+        fetch_xml = False
+        
+        try:
+            xml_updated = requests.head('https://atom.cuzk.cz/DMR5G-SJTSK/DMR5G-SJTSK.xml').headers['Last-Modified']
+        
+        except:
+            rospy.logwarn("No internet connection. Cannot check if DMR5G XML is the newest version.")
+
+            if os.path.exists(self.xml_fn):
+                tree = ET.parse(self.xml_fn)
+                self.root = tree.getroot()
+            else:
+                rospy.logerr("The DMR5G XML is not in cache. Cannot function without it.")
+                raise(NoXMLFileError("No internet connection and the DMR5G XML is not in cache. Cannot function without it. The file is located online at https://atom.cuzk.cz/DMR5G-SJTSK/DMR5G-SJTSK.xml"))
+                
+        else:
+            prev_xml_updated_fn = self.cache_dir + "DMR5G_last_modified.txt"
+
+            if os.path.exists(prev_xml_updated_fn):
+                with open(prev_xml_updated_fn, "r") as f:
+                    prev_xml_updated = f.readline()
+                    if prev_xml_updated != xml_updated:
+                        fetch_xml = True
+            else:
+                fetch_xml = True
+
+            # Download the main XML file and save it.
+            if fetch_xml or not os.path.exists(self.xml_fn):
+                _, xml_data = self.open_url(self.xml_url)
+                self.root = ET.fromstring(xml_data)
+
+                with open(self.xml_fn, "w+") as f:
+                    f.write(xml_data)
+
+                with open(prev_xml_updated_fn, "w+") as f:
+                    f.write(xml_updated)
+
+            # Or load it from cache.
+            else:
+                tree = ET.parse(self.xml_fn)
+                self.root = tree.getroot()
 
     def open_url(self, url):
         response = urllib.request.urlopen(url)
@@ -217,6 +267,32 @@ class Dmr5gParser():
                 ids.append(id)
 
         return ids
+    
+    def get_tile_ids_rect(self, tl_sjtsk,tr_sjtsk,bl_sjtsk,br_sjtsk):        
+
+        poly2check = Polygon([tl_sjtsk,
+                            bl_sjtsk,
+                            br_sjtsk,
+                            tr_sjtsk])
+
+        centre_point = (tl_sjtsk + br_sjtsk + tr_sjtsk + bl_sjtsk)/4
+        centre_point_wgs = SJTSK_TO_WGS.transform(centre_point[0], centre_point[1])
+        radius = np.sqrt(np.sum(np.square(tr_sjtsk-bl_sjtsk)))/2
+
+        necessary_num_near_tiles = int((2+2*np.floor((1.1+np.floor(radius/1000))/2))**2)
+        tile_ids = list(self.tile_idx.nearest((centre_point_wgs[1],centre_point_wgs[0]), necessary_num_near_tiles))
+
+        ids = []
+
+        for id in tile_ids:
+            tile = self.get_tile(id)
+            tile_sjtsk = Polygon(np.array(WGS_TO_SJTSK.transform(np.array(tile)[:,0], np.array(tile)[:,1])).T)
+            tile_sjtsk_fixed = self.fix_tile_coords(tile_sjtsk)
+
+            if poly2check.intersects(tile_sjtsk_fixed):
+                ids.append(id)
+
+        return ids
         
     def get_tile_code(self,id):
         tile_url = self.get_tile_xml(id)
@@ -247,32 +323,44 @@ class Dmr5gParser():
                 return update_date
             
     def download_tile(self,id):
-        #id = self.get_tile_id(point)
-        tile_zip = self.get_tile_zip(id)
-        tile_code = self.get_tile_code(id)
-        tile_zip_fn = self.cache_dir + tile_code + ".zip"
-        tile_laz_fn = self.cache_dir + tile_code + ".laz"
-
-        urlretrieve(tile_zip, tile_zip_fn)
         
-        with zipfile.ZipFile(tile_zip_fn, 'r') as zip_ref:
+        try:
+            tile_zip = self.get_tile_zip(id)
+        except:
+            rospy.logwarn("No internet connection. Cannot download tile file.")
+            return None
+        else:
+            tile_code = self.get_tile_code(id)
+            tile_zip_fn = self.cache_dir + tile_code + ".zip"
+            tile_laz_fn = self.cache_dir + tile_code + ".laz"
 
-            with open('src/cuzk_tools/cache/update_dates.json', 'r') as upd_f:
-                try:
-                    update_dict = json.load(upd_f)
-                except:
-                    update_dict = dict()
+            urlretrieve(tile_zip, tile_zip_fn)
+            
+            with zipfile.ZipFile(tile_zip_fn, 'r') as zip_ref:
 
-            with open('src/cuzk_tools/cache/update_dates.json', 'w') as upd_f:
-                update_date = self.get_tile_update_date(id)
-                update_dict[tile_code] = update_date
-                upd_f.write(json.dumps(update_dict))
+                update_dates_path = self.cache_dir + 'update_dates.json'
 
-            file_name = zip_ref.namelist()[0]
-            zip_ref.extract(file_name,self.cache_dir)
-            os.rename(self.cache_dir + file_name, tile_laz_fn)
+                # If the update_dates file does not exist, create it first.
+                if not os.path.exists(update_dates_path):
+                    with open(update_dates_path, 'w') as upd_f:
+                        pass
 
-        return tile_laz_fn
+                with open(update_dates_path, 'r') as upd_f:
+                    try:
+                        update_dict = json.load(upd_f)
+                    except:
+                        update_dict = dict()
+
+                with open(update_dates_path, 'w') as upd_f:
+                    update_date = self.get_tile_update_date(id)
+                    update_dict[tile_code] = update_date
+                    upd_f.write(json.dumps(update_dict))
+
+                file_name = zip_ref.namelist()[0]
+                zip_ref.extract(file_name,self.cache_dir)
+                os.rename(self.cache_dir + file_name, tile_laz_fn)
+
+            return tile_laz_fn
     
     def get_tile_data(self, fn):
         with pylas.open(self.cache_dir + fn) as f:

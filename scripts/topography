@@ -6,6 +6,9 @@ import std_msgs
 
 from cuzk_tools.msg import Polygons, LineString, LineStringArray, PointArray, TopographyCategory
 from cuzk_tools.msg import Topography as TopographyMsg
+from geographic_msgs.msg import GeographicMap, WayPoint, MapFeature, KeyValue
+
+from unique_id import fromURL
 
 from jsk_recognition_msgs.msg import PolygonArray
 from sensor_msgs.msg import PointCloud2
@@ -18,6 +21,8 @@ from tqdm import tqdm
 import numpy as np
 import os
 import math
+import xml.etree.ElementTree as ET
+import urllib.request
 import shapely.geometry as shap
 
 from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str
@@ -29,11 +34,13 @@ class Topography:
     def __init__(self, vis_bool=True):
         rospy.init_node('topography')
 
+        self.check_file_updated()
+
+        self.sjtsk_frame = "sjtsk"
+
         self.data_dir = "/home/aherold/ws/src/cuzk_tools/data/gpkg_files/"
         
-        self.topography_msg = self.init_topography_msg()
-
-        self.topography_pub = rospy.Publisher('topography', TopographyMsg, queue_size=10, latch=True)
+        self.topography_pub = rospy.Publisher('topography', GeographicMap, queue_size=10, latch=True)
 
         self.vis_pubs = dict()
         if vis_bool:
@@ -43,23 +50,44 @@ class Topography:
                                     
         rospy.Service('topography', GetTopography, self.handle_topography_service)
 
-    def init_topography_msg(self):
-        msg = TopographyMsg()
+    def check_file_updated(self):
+        url = "https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml"
+        updated_fn = 'src/cuzk_tools/cache/gpkg_updated.txt'
 
-        for c in categories_str:
-            c_msg = TopographyCategory()
-            point_msg = PointArray()
-            ls_msg = LineStringArray()
-            poly_msg = PolygonArray()
+        prev_updated = ""
 
-            c_msg.name = c
-            c_msg.points = point_msg
-            c_msg.linestrings = ls_msg
-            c_msg.polygons = poly_msg
+        try:
+            with open(updated_fn, 'r') as file:
+                prev_updated = file.readline()
+        except:
+            pass
 
-            msg.categories.append(c_msg)
+        try:
+            response = urllib.request.urlopen(url)
+            xml_data = response.read().decode('utf-8')
+            root = ET.fromstring(xml_data)
+            
+            updated = root.find(f"{{{'http://www.w3.org/2005/Atom'}}}updated").text
 
-        return msg
+            if updated != prev_updated:
+                rospy.logwarn("Present GPKG file: {}, Newest GPKG file: {}. Consider downloading the newest GPKG file: \n\
+Go to https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml and click a link which looks like https://atom.cuzk.cz/ZABAGED-GPKG/datasetFeeds/CZ-00025712-CUZK_ZABAGED-GPKG_1.xml. \n\
+Finally download newest data using a link which looks like https://openzu.cuzk.cz/opendata/ZABAGED-GPKG/epsg-5514/ZABAGED-5514-gpkg-20230715.zip".format(prev_updated, updated))
+
+
+            with open(updated_fn, 'w+') as file:
+                file.write(updated)
+
+            #https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml
+            return response, xml_data
+        except:
+            rospy.loginfo("Tried to check if online ZABAGED polohopis file is updated but failed (maybe due to no internet connection?).")
+    
+
+        for i,entry in enumerate(self.root.iter(f"{{{self.namespace['atom']}}}entry")):
+            if i == id:
+                update_date = entry.find(f"{{{self.namespace['atom']}}}updated").text
+                return update_date
     
     def add_header(self, msg, frame):
         header = std_msgs.msg.Header()
@@ -149,7 +177,13 @@ class Topography:
 
             self.vis_pubs[c_msg.name].publish(poly_arr)
             
-    
+    def id2url(self, id, c=None):
+        # Not at all a real URL.
+        if c is None:
+            return "https://ags.cuzk.cz/" +str(id)
+        else:
+            return "https://ags.cuzk.cz/" +str(id) +'/' +str(c)
+        
     def handle_topography_service(self, req):
         # Assuming 'req' is of type GetTopography, which contains 'point' and 'radius' fields.
 
@@ -161,6 +195,14 @@ class Topography:
         y_min = point_sjtsk[1] - radius
         x_max = point_sjtsk[0] + radius
         y_max = point_sjtsk[1] + radius
+
+        msg = GeographicMap()
+        msg = self.add_header(msg, self.sjtsk_frame)
+        msg.id.uuid = fromURL("https://ags.cuzk.cz/"+str(point[0])+'/'+str(point[1])+'/'+str(radius)).bytes
+        msg.bounds.min_pt.latitude = y_min
+        msg.bounds.min_pt.longitude = x_min
+        msg.bounds.max_pt.latitude = y_max
+        msg.bounds.max_pt.longitude = x_max
 
         rects = get_rects(x_min,y_min,x_max,y_max,H,W)
 
@@ -185,105 +227,104 @@ class Topography:
                     print(geom_name)
                     print(len(layer))
 
-                    if geom_name == "point":
-                        msg = self.topography_msg.categories[category_ind].points
-                        #msg = PointArray()
-                        #msg = self.add_header(msg, "sjtsk")
-                        
-                    elif geom_name == "multilinestring":
-                        msg = self.topography_msg.categories[category_ind].linestrings
-                        #msg = LineStringArray()
-                        #msg = self.add_header(msg, "sjtsk")
-
-                    elif geom_name == "multipolygon":
-                        msg = self.topography_msg.categories[category_ind].polygons
-                        #msg = PolygonArray()
-                        #msg = self.add_header(msg, "sjtsk")
-
-                    else:
-                        raise NotImplementedError("You whoopsed up, buck-o.")
-
                     for feature in tqdm(layer):
 
                         coords = feature['geometry']['coordinates']
                         geom_type = feature['geometry']['type']
+                        id = feature['properties']['fid_zbg']
+
+                        map_feature = MapFeature()
+                        map_feature.id.uuid = fromURL(self.id2url(id)).bytes
+                        key_val = KeyValue()
+                        key_val.key = "category"
+                        key_val.value = category_name
+                        map_feature.props.append(key_val)
 
                         if geom_type == 'Point':
-                            #raise TypeError("Not yet implemented for {}.".format(geom_type))
-
                             data = coords
 
                             dists = ((data[0] - point_sjtsk[0])**2 + (data[1] - point_sjtsk[1])**2)**(1/2)
                             if not np.any(dists<radius):
                                 continue
 
-                            point_msg = Point()
-                            point_msg.x = (data[0] - point_sjtsk[0]) * SCALE
-                            point_msg.y = (data[1] - point_sjtsk[1]) * SCALE
-                            point_msg.z = 0.
+                            # FOR NOW KEEP COORDS IN SJTSK. IT'S JUST TEMPORARY DON'T WORRY, OK?
+                            point_msg = WayPoint()
+                            point_msg.id.uuid = fromURL(self.id2url(id,0)).bytes
+                            #point_msg.props.key = "category"
+                            #point_msg.props.value = category_name
+                            point_msg.position.latitude = data[0]
+                            point_msg.position.longitude = data[1]
+                            point_msg.position.altitude = 0.
 
                             msg.points.append(point_msg)
+                            map_feature.components.append(point_msg.id)
 
 
                         elif geom_type == 'MultiLineString':
-                            #raise TypeError("Not yet implemented for {}.".format(geom_type))
                             if len(coords) > 1:
                                 print("Aw shucks")
 
                             data = np.array(coords[0])
-                            num_points = len(data)
 
                             dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
                             
                             if not np.any(dists<radius):
                                 continue
 
-                            points = [None] * num_points
-                            
-                            for i,row in enumerate(data):
-                                p = Point()
-                                p.x = (row[0] - point_sjtsk[0]) * SCALE
-                                p.y = (row[1] - point_sjtsk[1]) * SCALE
-                                p.z = 0.
-                                points[i] = p
-                            
-                            ls = LineString()
-                            ls.points = points
-                            ls = self.add_header(ls, "sjtsk")
+                            c = 0
+                            for row in data:
+                                # FOR NOW KEEP COORDS IN SJTSK. IT'S JUST TEMPORARY DON'T WORRY, OK?
+                                point_msg = WayPoint()
+                                point_msg.id.uuid = fromURL(self.id2url(id,c)).bytes
+                                #point_msg.props.key = "category"
+                                #point_msg.props.value = category_name
+                                point_msg.position.latitude = row[0] 
+                                point_msg.position.longitude = row[1]
+                                point_msg.position.altitude = 0.
 
-                            msg.linestrings.append(ls)
+                                msg.points.append(point_msg)
+
+                                map_feature.components.append(point_msg.id)
+
+                                c += 1
+                            
 
                         elif geom_type == 'MultiPolygon':
-                            data = np.array(coords[0][0])
-                            num_points = len(data)
-                            
+                            data = np.array(coords[0][0])                            
 
                             dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
                             
                             if not np.any(dists<radius):
                                 continue
 
-                            poly_stamped = self.data2poly_msg(data, point_sjtsk)
-                            
-                            msg.polygons.append(poly_stamped)
+                            c = 0
+                            for row in data:
+                                # FOR NOW KEEP COORDS IN SJTSK. IT'S JUST TEMPORARY DON'T WORRY, OK?
+                                point_msg = WayPoint()
+                                point_msg.id.uuid = fromURL(self.id2url(id,c)).bytes
+                                #point_msg.props.key = "category"
+                                #point_msg.props.value = category_name
+                                point_msg.position.latitude = row[0]
+                                point_msg.position.longitude = row[1]
+                                point_msg.position.altitude = 0.
+
+                                msg.points.append(point_msg)
+
+                                map_feature.components.append(point_msg.id)
+
+                                c += 1
                         
                         else:
                             raise TypeError("Expected types are MultiLineString, MultiPolygon and Point. Got {} instead.".format(geom_type))
 
-                    """ if geom_name == "point":
-                        self.topography_msg.categories[category_ind].points = msg
-                    elif geom_name == "multilinestring":
-                        self.topography_msg.categories[category_ind].linestrings = msg
-                    elif geom_name == "multipolygon":
-                        self.topography_msg.categories[category_ind].polygons = msg
-                    else:
-                        raise NotImplementedError("This is literally impossible. Congratulations!") """
+                        msg.features.append(map_feature)
 
-        self.topography_pub.publish(self.topography_msg)
-        self.visualize_topography_msg(self.topography_msg)
+        self.topography_pub.publish(msg)
+        #self.visualize_topography_msg(msg)
 
         # Return empty-ish response.
         response = GetTopographyResponse()
+        response.map = msg
         return response
 
 

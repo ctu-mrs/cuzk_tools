@@ -1,6 +1,7 @@
 from collections import defaultdict, OrderedDict
 
 import fiona
+from fiona import Properties
 import numpy as np
 from shapely.geometry import MultiLineString, MultiPolygon, Polygon , Point, shape
 from tqdm import tqdm
@@ -93,7 +94,7 @@ def get_layer_schemas(gpkg_file):
     return layer_schemas
 
 def get_simple_schema(geom_type):
-    return dict(properties=OrderedDict(), geometry=geom_type)
+    return dict(properties=OrderedDict(fid_zbg="str"), geometry=geom_type)
 
 def get_simple_crs():
     return dict(init='epsg:5514')
@@ -280,7 +281,7 @@ def split_gpkg_into_files(gpkg_file, fn_preposition):
 
                     rects = get_rects(coords_x_min, coords_y_min, coords_x_max, coords_y_max,H,W)
 
-                    feature['properties'] = OrderedDict()
+                    feature['properties'] = OrderedDict(fid_zbg=feature['properties']['fid_zbg'])
 
                     for rect in rects:
                         data[rect][geom_type].append(feature)

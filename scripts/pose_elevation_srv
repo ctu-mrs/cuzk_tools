@@ -7,12 +7,16 @@ import tf2_ros
 
 from copy import deepcopy
 
+
+from geometry_msgs.msg import Point
+from geographic_msgs.msg import GeoPoint
 from sensor_msgs.msg import PointCloud2, PointField
 import sensor_msgs.point_cloud2 as pc2
 from std_msgs.msg import String
 from visualization_msgs.msg import Marker
 
-from cuzk_tools.srv import PoseElevationGet,PoseElevationGetResponse
+from cuzk_tools.srv import PointElevationGet,PointElevationGetResponse
+from cuzk_tools.srv import GeoPointElevationGet,GeoPointElevationGetResponse
 
 import json
 import pylas
@@ -36,8 +40,12 @@ class PoseElevation(Elevation):
         self.utm_frame = "utm"
         self.utm_local_frame = "utm_local"
 
-        self.cache_dir = "/home/aherold/ws/src/cuzk_tools/cache/"
-        self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+            
+        self.elev_data_parser = Dmr5gParser(self.cache_dir)
 
         self.utm_zone = default_utm_zone
         self.utm_zone_sub = rospy.Subscriber("utm_zone", String, self.update_utm_zone, queue_size=10)
@@ -48,21 +56,15 @@ class PoseElevation(Elevation):
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         
-        rospy.Service('pose_elevation_get', PoseElevationGet, self.handle_pose_elevation)
+        rospy.Service('point_elevation_get', PointElevationGet, self.handle_point_elevation)
+        rospy.Service('geopoint_elevation_get', GeoPointElevationGet, self.handle_geopoint_elevation)
 
         self.tile_id = None
         self.tree = None
         self.tile_data = None
-    
-    def handle_pose_elevation(self, req):
-        position = [req.position.position.x, req.position.position.y]
-        frame = req.frame.data
 
+    def coords2sjtsk(self, position, frame, response):
         sjtsk_coords = [0.,0.]
-
-        response = PoseElevationGetResponse()
-
-        # Transform coordinates to S-JTSK.
 
         if frame == "sjtsk":
             sjtsk_coords = position
@@ -97,6 +99,16 @@ class PoseElevation(Elevation):
         else:
             raise UnsupportedFrameError("Frame {} is not one of ('sjtsk','utm','utm_local','wgs').".format(frame))
         
+        return sjtsk_coords
+    
+    def handle_point_elevation(self, req):
+        position = [req.point.x, req.point.y]
+        frame = req.frame.data
+        response = PointElevationGetResponse()
+
+        # Transform coordinates to S-JTSK.
+        sjtsk_coords = self.coords2sjtsk(position, frame, response)
+        
         # Get tile containing robot position.
         tile_id = self.elev_data_parser.get_tile_ids(sjtsk_coords, 0)[0]
 
@@ -105,6 +117,11 @@ class PoseElevation(Elevation):
             pass
         else:
             self.tile_data = self.get_data(sjtsk_coords,None)
+
+            if len(self.tile_data) == 0:
+                rospy.logwarn("No data available. Returning default pose msg.")
+                return response
+
             self.tile_data = self.tile_data.view((np.float64,len(self.tile_data.dtype.names)))
             self.tree = cKDTree(self.tile_data[:,:2])
             self.tile_id = tile_id
@@ -112,17 +129,30 @@ class PoseElevation(Elevation):
         # Use (saved) cKDTree to find nearest point.
         _,inds = self.tree.query(sjtsk_coords, k=10)
         nearest_points = self.tile_data[inds,:]
-
+            
         # Interpolate to obtain elevation.
     
         elevation = self.interpolate_elevation(sjtsk_coords, nearest_points)
 
         # Create response with x,y,z. 
-        response.position.position.x = req.position.position.x
-        response.position.position.y = req.position.position.y
-        response.position.position.z = elevation
+        response.point.x = req.point.x
+        response.point.y = req.point.y
+        response.point.z = elevation
 
         return response
+    
+    def handle_geopoint_elevation(self, req):
+        p = Point(req.point.longitude, req.point.latitude, req.point.altitude)
+        req.point = p
+
+        response = self.handle_point_elevation(req)
+
+        gp = GeoPoint()
+        gp.latitude, gp.longitude, gp.altitude = response.point.y, response.point.x, response.point.z
+        geo_response = GeoPointElevationGetResponse()
+        geo_response.point = gp
+
+        return geo_response
     
     def interpolate_elevation(self, point, near_points):
         try:

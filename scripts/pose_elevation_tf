@@ -38,8 +38,12 @@ class ElevationTF(Elevation):
         self.reference_tf = reference_tf
         self.followed_tf = default_followed_tf
 
-        self.cache_dir = "/home/aherold/ws/src/cuzk_tools/cache/"
-        self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+            
+        self.elev_data_parser = Dmr5gParser(self.cache_dir)
 
         self.utm_zone = default_utm_zone
         self.utm_zone_sub = rospy.Subscriber("utm_zone", String, self.update_utm_zone, queue_size=10)
@@ -68,6 +72,11 @@ class ElevationTF(Elevation):
             pass
         else:
             tile_data = self.get_data(sjtsk_coords,None)
+
+            if len(tile_data) == 0:
+                rospy.logwarn("No data available. Defaulting to elevation = 0.")
+                return 0.
+            
             self.tile_data_dict[tile_id] = tile_data.view((np.float64,len(tile_data.dtype.names)))
 
             self.tree_dict[tile_id] = cKDTree(self.tile_data_dict[tile_id][:,:2])

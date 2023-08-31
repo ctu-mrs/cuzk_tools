@@ -1,5 +1,7 @@
 import requests
 import time
+import os
+import rospy
 from copy import deepcopy
 import zipfile
 from urllib.parse import urlencode
@@ -65,8 +67,19 @@ arg_vals = [
 "json",
 ]
 
-def get_img(coords):
+def get_img(coords, img_dir):
     global base_url, arg_names, arg_vals
+
+    img_fn = "orto_{}_{}_{}_{}.png".format(str(-coords[0]),
+                                str(-coords[1]),
+                                str(-coords[2]),
+                                str(-coords[3]))
+    
+    png_path = img_dir + img_fn
+    
+    # If an image with the same coordinates has been downloaded previously use it.
+    if os.path.exists(img_dir + img_fn):
+        return png_path
 
     arg_vals_updated = deepcopy(arg_vals)
     arg_vals_updated[arg_names.index("bbox")] = ','.join(list(map(str, coords)))
@@ -78,29 +91,34 @@ def get_img(coords):
     encoded_params = urlencode(args)
     full_url = f"{base_url}?{encoded_params}"
 
-    print(full_url)
+    try:
+        response = requests.get(full_url)
 
-    response = requests.get(full_url)
-    response = response.json()
+    except Exception as e:
+        rospy.logwarn("orto: Failed to fetch image. The exception was: {}".format(e))
+        return None
+    
+    else:
+        response = response.json()
 
-    png_url = response['href']
+        png_url = response['href']
 
-    png_path = '/home/aherold/ws/src/cuzk_tools/images/orto.png'
+        start_t = time.time()
+        while True:
+            try:
+                urlretrieve(png_url, png_path)
+                print("orto: T = {} s: Retrieving image is done.".format(int(time.time() - start_t)))
+                break
+            except:
+                print("orto: T = {} s: Retrieving image is not done yet.".format(int(time.time() - start_t)))
+                time.sleep(0.5)
 
-    start_t = time.time()
-    while True:
-        try:
-            urlretrieve(png_url, png_path)
-            print("T = {} s: Job's done.".format(int(time.time() - start_t)))
-            break
-        except:
-            print("T = {} s: Job's not done yet.".format(int(time.time() - start_t)))
-            time.sleep(0.5)
+            if time.time() - start_t >= 10:
+                rospy.logwarn("orto: Retrieving image did not get done in under 10 s. Terminating.")
+                return None
+                raise TimeoutError("orto: Job did not get done in under 10 s. Terminating.")
 
-        if time.time() - start_t >= 10:
-            raise TimeoutError("Job did not get done in under 10 s. Terminating.")
-
-    return png_path
+        return png_path
 
 def plot_image(path):
     # Load the PNG image using matplotlib's imread function

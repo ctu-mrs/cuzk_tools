@@ -5,9 +5,10 @@ import tf2_ros
 
 from copy import deepcopy
 
+from cuzk_tools.msg import OrtoImage
 from sensor_msgs.msg import PointCloud2, PointField
 import sensor_msgs.point_cloud2 as pc2
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 from visualization_msgs.msg import Marker
 
 from cuzk_tools.srv import ElevationPublish, ElevationGet, ElevationPublishResponse, ElevationGetResponse
@@ -30,8 +31,12 @@ class Elevation:
     def __init__(self, default_utm_zone):
         rospy.init_node('elevation')
 
-        self.cache_dir = "/home/aherold/ws/src/cuzk_tools/cache/"
-        self.elev_data_parser = Dmr5gParser(self.cache_dir, False)
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
+
+        self.elev_data_parser = Dmr5gParser(self.cache_dir)
 
         self.sjtsk_frame = "sjtsk"
         self.utm_frame = "utm"
@@ -49,6 +54,8 @@ class Elevation:
         self.elev_utm_pub = rospy.Publisher('elevation_utm', PointCloud2, queue_size=10, latch=True)
         self.elev_utm_local_pub = rospy.Publisher('elevation_utm_local', PointCloud2, queue_size=10, latch=True)
         self.elev_wgs_pub = rospy.Publisher('elevation_wgs', PointCloud2, queue_size=10, latch=True)
+        
+        self.orto_img_pub = rospy.Publisher('elevation_img', OrtoImage, queue_size=10, latch=True)
 
         rospy.Service('elevation_publish', ElevationPublish, self.handle_elevation_publish)
         rospy.Service('elevation_get', ElevationGet, self.handle_elevation_get)
@@ -64,7 +71,10 @@ class Elevation:
     def get_data(self, point_sjtsk, radius=None):
         ids = self.elev_data_parser.get_tile_ids(point_sjtsk, 0 if radius is None else radius)
 
-        sjtsk_data = None
+        sjtsk_data = np.zeros(0,dtype=[
+                    ('x', np.float64),
+                    ('y', np.float64),
+                    ('z', np.float64)])
 
         for id in ids:
             tile_code = self.elev_data_parser.get_tile_code(id)
@@ -73,8 +83,14 @@ class Elevation:
             if not self.is_file_in_dir(self.cache_dir, fn):
                 rospy.loginfo("Tile {} not in cache. Downloading...".format(tile_code))
                 self.elev_data_parser.download_tile(id)
+            
             else:
-                with open("src/cuzk_tools/cache/update_dates.json", "r") as f:
+                # If the update_dates file does not exist, create it first.
+                if not os.path.exists(self.cache_dir + "update_dates.json"):
+                    with open(self.cache_dir + "update_dates.json", 'w') as upd_f:
+                        pass
+
+                with open(self.cache_dir + "update_dates.json", "r") as f:
                     tile_cache_date_dict = json.load(f)
 
                     if not tile_code in tile_cache_date_dict:
@@ -89,40 +105,50 @@ class Elevation:
                             rospy.loginfo("Tile {} needs an update. Downloading...".format(tile_code))
                             self.elev_data_parser.download_tile(id)
 
-            tile_data = self.elev_data_parser.get_tile_data(fn)
-
-            if sjtsk_data is None:
-                sjtsk_data = np.copy(tile_data)
+            try:
+                tile_data = self.elev_data_parser.get_tile_data(fn)
+            except:
+                rospy.logwarn("Cannot open tile file (likely because it hasn't been downloaded).")
             else:
                 sjtsk_data = np.concatenate((sjtsk_data,tile_data))
 
-        if radius is not None:
+        if radius is not None and sjtsk_data is not None:
             dists = ((sjtsk_data['x'] - point_sjtsk[0])**2 + (sjtsk_data['y'] - point_sjtsk[1])**2)**(1/2)
             sjtsk_data = sjtsk_data[dists <= radius]
         else:
             pass
-
+        
+        if len(sjtsk_data) == 0:
+            rospy.logwarn("Failed to obtain any data.")
+            
         return sjtsk_data
     
     def get_bg_img(self,point,radius):
-        coords = [point[0]-radius, point[1]-radius, point[0]+radius, point[1]+radius]
-        img_path = get_img(coords)
+        coords = [int(np.floor(point[0]-radius)),
+                int(np.floor(point[1]-radius)),
+                int(np.ceil(point[0]+radius)),
+                int(np.ceil(point[1]+radius))]
+        
+        img_path = get_img(coords, self.cache_dir)
         return img_path,coords
     
     def coord_transform_data(self, data, transformer, dtype=np.float32):
-        wgs_data = transformer.transform(data['x'], data['y'])
+        if len(data) >= 1:
+            wgs_data = transformer.transform(data['x'], data['y'])
 
-        wgs_arr = np.zeros(len(data), dtype=[
-        ('x', dtype),
-        ('y', dtype),
-        ('z', dtype)])
+            wgs_arr = np.zeros(len(data), dtype=[
+            ('x', dtype),
+            ('y', dtype),
+            ('z', dtype)])
+        
+            wgs_arr['x'] = wgs_data[0]
+            wgs_arr['y'] = wgs_data[1]
+            wgs_arr['z'] = data['z']
     
-        wgs_arr['x'] = wgs_data[0]
-        wgs_arr['y'] = wgs_data[1]
-        wgs_arr['z'] = data['z']
-    
-        return wgs_arr
-    
+            return wgs_arr
+        else:
+            return data
+        
     def change_arr_type(self,arr,dtype):
         new_arr = np.empty(len(arr), dtype=[('x', dtype),('y', dtype),('z', dtype)])
         new_arr['x'] = arr['x'].astype(dtype)
@@ -131,7 +157,7 @@ class Elevation:
         return new_arr
 
     def add_rgb(self,arr,dtype,rgb=None):
-        new_arr = np.empty(len(arr), dtype=[('x', dtype),('y', dtype),('z', dtype),('rgb', np.int)])
+        new_arr = np.empty(len(arr), dtype=[('x', dtype),('y', dtype),('z', dtype),('rgb', int)])
         new_arr['x'] = arr['x'].astype(dtype)
         new_arr['y'] = arr['y'].astype(dtype)
         new_arr['z'] = arr['z'].astype(dtype)
@@ -194,45 +220,58 @@ class Elevation:
         wgs_bool = req.wgs.data
 
         sjtsk_data = self.get_data(point_sjtsk,radius)
+
         n_points = len(sjtsk_data)
 
-        fields = [
-            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
-            PointField(name="rgb", offset=12, datatype=PointField.UINT32, count=1),
-        ]
-
         img_path,bounds = self.get_bg_img(point_sjtsk,radius)
-        rgb_arr = img2rgb(img_path, bounds, sjtsk_data.view((np.float64,len(sjtsk_data.dtype.names))))
-        rgba_arr = np.hstack((rgb_arr, 255*np.ones((n_points,1)))).astype('uint32')
 
-        rgb = (rgba_arr[:, 3] << 24) | (rgba_arr[:, 0]<< 16) | (rgba_arr[:, 1] << 8) | rgba_arr[:, 2]
+        img_path_msg = OrtoImage()
+        header = self.get_header(self.sjtsk_frame)
+        img_path_msg.header = header
+        img_path_msg.path = String(img_path)
+        img_path_msg.bounds = [Float64(p) for p in bounds]
+
+        self.orto_img_pub.publish(img_path_msg)
+
+        rgb_bool = True
+        if img_path is None:
+            rgb_bool = False
+
+        if rgb_bool:
+            tl_bl_br = np.array([[bounds[0], bounds[3]],
+                                 [bounds[0], bounds[1]],
+                                 [bounds[2], bounds[1]]])
+            rgb_arr = img2rgb(img_path, tl_bl_br, sjtsk_data.view((np.float64,len(sjtsk_data.dtype.names))))
+            rgba_arr = np.hstack((rgb_arr, 255*np.ones((n_points,1)))).astype('uint32')
+            rgb = (rgba_arr[:, 3] << 24) | (rgba_arr[:, 0]<< 16) | (rgba_arr[:, 1] << 8) | rgba_arr[:, 2]
+
+            fields = [
+                PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+                PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+                PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+                PointField(name="rgb", offset=12, datatype=PointField.UINT32, count=1),
+            ]
+        else:
+            fields = [
+                PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+                PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+                PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+            ]
 
         if sjtsk_bool:
             pcd_data = deepcopy(sjtsk_data)
 
-            pcd_data['x'] = sjtsk_data['x']# - np.mean(sjtsk_data['x'])  #TODO DELETE
-            pcd_data['y'] = sjtsk_data['y']# - np.mean(sjtsk_data['y'])  #TODO DELETE
-            pcd_data['z'] = sjtsk_data['z']# - np.mean(sjtsk_data['z'])  #TODO DELETE
+            pcd_data['x'] = sjtsk_data['x']
+            pcd_data['y'] = sjtsk_data['y']
+            pcd_data['z'] = sjtsk_data['z']
 
-            #x = pcd_data['x'].astype(np.float32)
-            #y = pcd_data['y'].astype(np.float32)
-            #z = pcd_data['z'].astype(np.float32)
+            if rgb_bool:
+                points = self.add_rgb(pcd_data,np.float32,rgb)
+            else:
+                points = self.change_arr_type(pcd_data,np.float32)
             
-            
-
-            points = self.add_rgb(pcd_data,np.float32,rgb)
-
-            #points = np.empty(n_points, dtype=[('x', np.float32),('y', np.float32),('z', np.float32),('rgb', np.int)])
-            #points['x'] = x
-            #points['y'] = y
-            #points['z'] = z
-            #points['rgb'] = rgb
-
-            pcd_rgb = pc2.create_cloud(self.get_header(self.sjtsk_frame), fields, points)
-
-            self.elev_sjtsk_pub.publish(pcd_rgb)
+            pcd = pc2.create_cloud(self.get_header(self.sjtsk_frame), fields, points)
+            self.elev_sjtsk_pub.publish(pcd)                 
 
         if utm_bool or utm_local_bool:
             if self.utm_zone is None:
@@ -242,11 +281,13 @@ class Elevation:
 
             if utm_bool:
 
-                points = self.add_rgb(utm_data,np.float32,rgb)
-
-                pcd_rgb = pc2.create_cloud(self.get_header(self.utm_frame), fields, points)
+                if rgb_bool:
+                    points = self.add_rgb(utm_data,np.float32,rgb)
+                else:
+                    points = self.change_arr_type(utm_data,np.float32)
                 
-                self.elev_utm_pub.publish(pcd_rgb)
+                pcd = pc2.create_cloud(self.get_header(self.utm_frame), fields, points)
+                self.elev_utm_pub.publish(pcd) 
 
             if utm_local_bool:
                 try:
@@ -265,11 +306,14 @@ class Elevation:
                     utm_local_data['x'] -=  x_offset
                     utm_local_data['y'] -=  y_offset
 
-                    points = self.add_rgb(utm_local_data,np.float32,rgb)
-
-                    pcd_rgb = pc2.create_cloud(self.get_header(self.utm_local_frame), fields, points)
-            
-                    self.elev_utm_local_pub.publish(pcd_rgb)
+                    if rgb_bool:
+                        points = self.add_rgb(utm_local_data,np.float32,rgb)
+                    else:
+                        points = self.change_arr_type(utm_local_data,np.float32)
+                    
+                    pcd = pc2.create_cloud(self.get_header(self.utm_local_frame), fields, points)
+                    self.elev_utm_local_pub.publish(pcd) 
+                        
 
                 else:
                     rospy.logwarn("utm_local: Publishing empty pointcloud.")
@@ -277,11 +321,13 @@ class Elevation:
         if wgs_bool:
             wgs_data = self.coord_transform_data(sjtsk_data, SJTSK_TO_WGS)
 
-            points = self.add_rgb(wgs_data,np.float32,rgb)
-
-            pcd_rgb = pc2.create_cloud(self.get_header(self.wgs_frame), fields, points)
-
-            self.elev_wgs_pub.publish(pcd_rgb)
+            if rgb_bool:
+                points = self.add_rgb(wgs_data,np.float32,rgb)
+            else:
+                points = self.change_arr_type(wgs_data,np.float32)
+            
+            pcd = pc2.create_cloud(self.get_header(self.wgs_frame), fields, points)
+            self.elev_wgs_pub.publish(pcd)                
 
         # Return empty-ish response.
         response = ElevationPublishResponse()
@@ -298,6 +344,9 @@ class Elevation:
         wgs_bool = req.wgs.data
 
         sjtsk_data = self.get_data(point_sjtsk,radius)
+
+        
+            
         n_points = len(sjtsk_data)
 
         sjtsk_msg = PointCloud2()
