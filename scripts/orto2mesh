@@ -1,0 +1,269 @@
+#!/usr/bin/env python
+
+from img2rgb import img2rgb
+from ros_open3d_conversion import convertCloudFromRosToOpen3d, ball_pivoting_reconstruction, convert_rgbUint32_to_tuple
+from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+
+from cuzk_tools.msg import OrtoImage
+from geometry_msgs.msg import Point, Vector3
+from sensor_msgs.msg import PointCloud2, PointField
+from std_msgs.msg import ColorRGBA, Header, String
+from visualization_msgs.msg import Marker, MarkerArray
+
+import rospy
+import ros_numpy
+import numpy as np
+from PIL import Image
+from scipy.spatial import cKDTree
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+import tf2_ros
+
+
+class Orto2Mesh():
+    def __init__(self, pcd_topic, default_utm_zone):
+        rospy.init_node('orto2mesh')
+
+        self.img_path = ""
+        self.bounds = []
+        self.radius = None
+        self.grid_points = None
+        self.tree = None
+
+        self.ele_img_sub = rospy.Subscriber("elevation_img", OrtoImage, self.update_orto, queue_size=10)
+        self.pcd_sub = rospy.Subscriber(pcd_topic, PointCloud2, self.handle_pcd, queue_size=10)
+
+        self.topic_name = pcd_topic+"_orto_mesh"
+        self.pcd_pub = rospy.Publisher(self.topic_name, Marker, queue_size=10, latch=True)
+
+        # UTM LOCAL MANAGEMENT
+        self.sjtsk_frame = "sjtsk"
+        self.utm_frame = "utm"
+        self.utm_local_frame = "utm_local"
+        self.wgs_frame = "wgs"
+
+        self.utm_zone = default_utm_zone
+        self.utm_zone_sub = rospy.Subscriber("utm_zone", String, self.update_utm_zone, queue_size=10)
+
+        self.utm_local_trans = None
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+    
+    def update_utm_zone(self, msg):
+        self.utm_zone = msg.data
+
+    def get_header(self,frame):
+        header = Header()
+        header.stamp = rospy.Time.now()
+        header.frame_id = frame
+        return header
+    
+    def img2grid(self, x_max, x_min, y_max, y_min):
+        # Create a grid of points using numpy
+
+        x_points = np.linspace(x_min, x_max - self.step_w, self.w)
+        y_points = np.linspace(y_min, y_max - self.step_h, self.h)
+
+        # Use numpy.meshgrid to create a grid of 2D points
+        X, Y = np.meshgrid(x_points, y_points)
+
+        return np.concatenate((X.flatten().reshape(-1,1),Y.flatten().reshape(-1,1)),axis=1)
+    
+    def interpolate_elevation(self, points, near_points):
+        try:
+            interpolator = LinearNDInterpolator(near_points[:,:2], near_points[:,2])
+        except:
+            interpolator = NearestNDInterpolator(near_points[:,:2], near_points[:,2])
+
+        elevation = interpolator(points)
+        nan_points = points[np.isnan(elevation)]
+
+        if len(nan_points) > 0:
+            interpolator = NearestNDInterpolator(near_points[:,:2], near_points[:,2])
+            nan_elevation = interpolator(nan_points)
+            elevation[np.isnan(elevation)] = nan_elevation
+        
+        return elevation
+
+    def update_orto(self,req):
+        self.img_frame = req.header.frame_id
+        self.img_path = req.path.data
+        bounds = [p.data for p in req.bounds]
+        self.radius = (bounds[2] - bounds[0])/2
+
+        tr = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
+        bounds_utm = tr.transform([bounds[0],bounds[2]],[bounds[1],bounds[3]])
+        
+        bounds_utm = [bounds_utm[0][0], bounds_utm[1][0], bounds_utm[0][1], bounds_utm[1][1]]
+
+        try:
+            self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
+            x_offset = self.utm_local_trans.transform.translation.x
+            y_offset = self.utm_local_trans.transform.translation.y
+        except:
+            rospy.logwarn("Orto2mesh: Cannot obtain transform (utm, utm_local).")
+
+            rate = rospy.Rate(20)
+            while self.utm_local_trans is None:
+                try:
+                    self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
+                except:
+                    rospy.loginfo_throttle(2, "Orto2mesh: Waiting for transform (utm, utm_local).")
+                    rate.sleep()
+
+            x_offset = self.utm_local_trans.transform.translation.x
+            y_offset = self.utm_local_trans.transform.translation.y
+            rospy.logwarn("Orto2mesh: Using last known transform.")
+                
+        bounds_utm[0] -=  x_offset
+        bounds_utm[2] -=  x_offset
+        bounds_utm[1] -=  y_offset
+        bounds_utm[3] -=  y_offset
+
+        bounds_utm_local = bounds_utm
+
+        centre = np.array([(bounds_utm_local[2]+bounds_utm_local[0])/2, (bounds_utm_local[3]+bounds_utm_local[1])/2])
+
+        self.img = Image.open(self.img_path)
+        self.img = self.img.convert('RGB')
+        self.img = np.array(self.img)
+        self.img = np.flip(self.img,0)
+
+        self.w = self.img.shape[0]
+        self.h = self.img.shape[1]
+        self.step_w = (bounds[2] - bounds[0])/self.w
+        self.step_h = (bounds[3] - bounds[1])/self.h
+
+        self.img = self.img.reshape(-1, self.img.shape[-1])
+
+        self.grid_points = self.img2grid(bounds_utm_local[2],
+                                         bounds_utm_local[0], 
+                                         bounds_utm_local[3], 
+                                         bounds_utm_local[1], 
+                                         )
+        
+        dists = ((self.grid_points[:,0] - centre[0])**2 + (self.grid_points[:,1] - centre[1])**2)**(1/2)
+
+        mask = dists <= self.radius
+        self.img = self.img[mask]
+        self.grid_points = self.grid_points[mask]
+        
+        rate = rospy.Rate(20)
+
+        while self.tree is None:
+            rospy.loginfo_throttle(2, "Orto2mesh: Waiting for tree (generated from elev pcd).")
+            rate.sleep()
+
+        #query_points = np.concatenate((self.grid_points[0].flatten().reshape(-1,1),self.grid_points[1].flatten().reshape(-1,1)),axis=1)
+        _,inds = self.tree.query(self.grid_points, k=10)
+        #nearest_points = self.pcd_xyz[inds,:]
+        #colours = self.pcd_rgb[inds,:]
+            
+        # Interpolate to obtain elevation.
+        elevation = self.interpolate_elevation(self.grid_points, self.pcd_xyz)
+        points = np.concatenate([self.grid_points, elevation.reshape(-1,1)], axis=1)
+        
+        self.visualize_grid(points, self.img)
+        
+
+        #rospy.loginfo("orto2mesh: Publishing mesh at {}.".format(self.topic_name))
+        #self.pcd_pub.publish(marker)
+
+
+    def handle_pcd(self, req):
+        # These will be used in the `update_orto` callback.
+        self.pcd = ros_numpy.numpify(req)
+        self.pcd_xyz = self.pcd.view((np.float32,4))[:,:3]
+        #self.pcd_rgb = convert_rgbUint32_to_tuple(self.pcd['rgb'])
+        #self.pcd_rgb = np.concatenate([self.pcd_rgb[0].reshape(-1,1), self.pcd_rgb[1].reshape(-1,1), self.pcd_rgb[2].reshape(-1,1)],axis=1)
+
+        # Also prepare a tree for NN search.
+        pcd_tree = self.pcd_xyz[:,:2]  # in tree keep x,y only
+        self.tree = cKDTree(pcd_tree)
+
+    def points2triangles(self, points):
+        triangles = np.zeros((6*points.shape[0], 3))
+        triangles[0::6] = points
+        triangles[1::6] = points + [self.step_w, 0, 0]
+        triangles[2::6] = points + [self.step_w, -self.step_h, 0]
+        triangles[3::6] = points
+        triangles[4::6] = points + [self.step_w, -self.step_h, 0]
+        triangles[5::6] = points + [0, -self.step_h, 0]
+        
+        return triangles
+
+    def visualize_grid(self, points, colors):
+        triangle_points = self.points2triangles(points)
+        triangle_points = np.array([Point(p[0],p[1],p[2]) for p in triangle_points])    # slow
+
+        if len(colors):
+            colors = colors.astype(np.float32)
+            colors /= 255.
+            colors = [ColorRGBA(r=c[0], g=c[1], b=c[2], a=1.) for c in colors]     # slow
+            colors = np.repeat(colors, 6)
+
+        header = self.get_header("utm_local")
+
+        marker = Marker(header=header,
+                        ns="mesh",
+                        id=1,
+                        type=Marker.TRIANGLE_LIST,
+                        action=Marker.ADD,
+                        scale=Vector3(1,1,1),
+                        lifetime=rospy.Duration(0),
+                        points = triangle_points,
+                        colors = colors)
+
+        rospy.loginfo("orto2mesh: Publishing mesh at {}.".format(self.topic_name))
+        self.pcd_pub.publish(marker)
+
+    
+    def sjtsk2frame(self, sjtsk_points, frame):
+        if frame == "sjtsk":
+            return sjtsk_points
+        
+        elif frame == "utm":
+            if self.utm_zone is None:
+                raise ValueError("sjtsk2frame: utm_zone has not been set.")
+            
+            transformer = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
+            transformed_points = transformer.transform(sjtsk_points[:,0], sjtsk_points[:,1])
+            transformed_points = np.vstack([transformed_points[0],transformed_points[1]]).T
+
+            return transformed_points
+        
+        elif frame == "utm_local":
+            if self.utm_zone is None:
+                rospy.logwarn("sjtsk2frame: utm_zone has not been set. Returning None.")
+                return None
+            
+            transformer = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
+            utm_points = transformer.transform(sjtsk_points[:,0], sjtsk_points[:,1])
+            utm_points = np.vstack([utm_points[0],utm_points[1]]).T
+            
+            try:
+                self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
+            except:
+                rospy.logwarn("sjtsk2frame: Cannot obtain transform (utm, utm_local).")
+                if self.utm_local_trans is not None:
+                    rospy.logwarn("sjtsk2frame: Using last known transform.")
+                else:
+                    rospy.logwarn("sjtsk2frame: Returning None.")
+                    return None
+                
+            utm_points[:,0] -= self.utm_local_trans.transform.translation.x
+            utm_points[:,1] -= self.utm_local_trans.transform.translation.y
+
+            return utm_points
+        
+        elif frame=="wgs":
+            transformer = SJTSK_TO_WGS
+            transformed_points = transformer.transform(sjtsk_points[:,0], sjtsk_points[:,1])
+            transformed_points = np.vstack([transformed_points[0],transformed_points[1]]).T
+
+            return transformed_points
+    
+if __name__ == "__main__":
+    pcd_topic = rospy.get_param('/pcd2mesh/pcd_topic', "")
+    default_utm_zone = rospy.get_param('/pcd2mesh/default_utm_zone', "33N")
+    node = Orto2Mesh(pcd_topic, default_utm_zone)
+    rospy.spin()

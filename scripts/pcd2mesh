@@ -25,7 +25,7 @@ class Pcd2Mesh():
         self.bounds = []
         self.radius = None
 
-        self.utm_zone_sub = rospy.Subscriber("elevation_img", OrtoImage, self.update_orto, queue_size=10)
+        self.ele_img_sub = rospy.Subscriber("elevation_img", OrtoImage, self.update_orto, queue_size=10)
         self.pcd_sub = rospy.Subscriber(pcd_topic, PointCloud2, self.handle_pcd, queue_size=10)
 
         self.topic_name = pcd_topic+"_mesh"
