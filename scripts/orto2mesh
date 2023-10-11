@@ -128,12 +128,21 @@ class Orto2Mesh():
         self.img_frame = req.header.frame_id
         self.img_path = req.path.data
         bounds = [p.data for p in req.bounds]
+        centre = np.array([(bounds[2]+bounds[0])/2, (bounds[3]+bounds[1])/2])
+
+        #corners_sjtsk = np.array([[bounds[0],bounds[0],bounds[2],bounds[2]],
+        #                          [bounds[1],bounds[3],bounds[1],bounds[3]]]).T
+
         self.radius = (bounds[2] - bounds[0])/2
 
-        tr = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
-        bounds_utm = tr.transform([bounds[0],bounds[2]],[bounds[1],bounds[3]])
+        sjtsk_to_utm_transformer = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
+        #bounds_utm = tr.transform([bounds[0],bounds[2]],[bounds[1],bounds[3]])
+        #bounds_utm = tr.transform([bounds[0],bounds[0],bounds[2],bounds[2]],
+        #                          [bounds[1],bounds[3],bounds[1],bounds[3]])
         
-        bounds_utm = [bounds_utm[0][0], bounds_utm[1][0], bounds_utm[0][1], bounds_utm[1][1]]
+        #corners_utm = np.vstack([bounds_utm[0],bounds_utm[1]]).T
+
+        #bounds_utm = [bounds_utm[0][0], bounds_utm[1][0], bounds_utm[0][1], bounds_utm[1][1]]
 
         try:
             self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
@@ -154,14 +163,14 @@ class Orto2Mesh():
             y_offset = self.utm_local_trans.transform.translation.y
             rospy.logwarn("Orto2mesh: Using last known transform.")
                 
-        bounds_utm[0] -=  x_offset
-        bounds_utm[2] -=  x_offset
-        bounds_utm[1] -=  y_offset
-        bounds_utm[3] -=  y_offset
+        #bounds_utm[0] -=  x_offset
+        #bounds_utm[2] -=  x_offset
+        #bounds_utm[1] -=  y_offset
+        #bounds_utm[3] -=  y_offset
 
-        bounds_utm_local = bounds_utm
+        #bounds_utm_local = bounds_utm
 
-        centre = np.array([(bounds_utm_local[2]+bounds_utm_local[0])/2, (bounds_utm_local[3]+bounds_utm_local[1])/2])
+        #centre = np.array([(bounds_utm_local[2]+bounds_utm_local[0])/2, (bounds_utm_local[3]+bounds_utm_local[1])/2])
 
         self.img = Image.open(self.img_path)
         self.img = self.img.convert('RGB')
@@ -170,25 +179,38 @@ class Orto2Mesh():
 
         self.w = self.img.shape[0]
         self.h = self.img.shape[1]
-        self.step_w = (bounds[2] - bounds[0])/self.w
-        self.step_h = (bounds[3] - bounds[1])/self.h
+        #self.step_w = (bounds_utm_local[2] - bounds_utm_local[0])/self.w
+        #self.step_h = (bounds_utm_local[3] - bounds_utm_local[1])/self.h
 
         self.img = self.img.reshape(-1, self.img.shape[-1])
 
-        self.grid_points = self.img2grid(bounds_utm_local[2],
-                                         bounds_utm_local[0], 
-                                         bounds_utm_local[3], 
-                                         bounds_utm_local[1], 
+        #self.grid_points = self.img2grid(bounds_utm_local[2],
+        #                                 bounds_utm_local[0], 
+        #                                 bounds_utm_local[3], 
+        #                                 bounds_utm_local[1], 
+        #                                 )
+        self.grid_points = self.img2grid(bounds[2],
+                                         bounds[0], 
+                                         bounds[3], 
+                                         bounds[1], 
                                          )
+        
+        self.grid_points_utm = sjtsk_to_utm_transformer.transform(self.grid_points[:,0], self.grid_points[:,1])
+        self.grid_points_utm = np.vstack([self.grid_points_utm[0],self.grid_points_utm[1]]).T
+        self.grid_points_utm -= [x_offset, y_offset]
+        
         tile_ids = self.generate_tile_ids(self.w, self.h)
 
         # DISTANCE MASKING (square to circle)
-        dists = ((self.grid_points[:,0] - centre[0])**2 +
-                 (self.grid_points[:,1] - centre[1])**2)**(1/2)
+        centre_utm = np.array(sjtsk_to_utm_transformer.transform(centre[0],centre[1]))
+        centre_utm -= [x_offset, y_offset]
+        dists = ((self.grid_points_utm[:,0] - centre_utm[0])**2 +
+                 (self.grid_points_utm[:,1] - centre_utm[1])**2)**(1/2)
         mask = dists <= self.radius
         mask = np.argwhere(mask)
         mask = np.delete(mask, np.argwhere(np.remainder(mask,self.w+2) == self.w+1)[:,0], 0)
         mask -= np.floor_divide(mask,self.w+2)
+        mask = mask[:np.searchsorted(mask.flatten(),self.w*self.h)]
 
         tile_ids = self.mask_expanded_array(tile_ids, 6, mask)
         self.img = self.img[mask].reshape(-1,3)
@@ -202,13 +224,13 @@ class Orto2Mesh():
             rate.sleep()
 
         #query_points = np.concatenate((self.grid_points[0].flatten().reshape(-1,1),self.grid_points[1].flatten().reshape(-1,1)),axis=1)
-        _,inds = self.tree.query(self.grid_points, k=10)
+        _,inds = self.tree.query(self.grid_points_utm, k=10)
         #nearest_points = self.pcd_xyz[inds,:]
         #colours = self.pcd_rgb[inds,:]
             
         # Interpolate to obtain elevation.
-        elevation = self.interpolate_elevation(self.grid_points, self.pcd_xyz)
-        points = np.concatenate([self.grid_points, elevation.reshape(-1,1)], axis=1)
+        elevation = self.interpolate_elevation(self.grid_points_utm, self.pcd_xyz)
+        points = np.concatenate([self.grid_points_utm, elevation.reshape(-1,1)], axis=1)
         mask = ~np.isnan(elevation)
         
         self.visualize_grid(points, self.img, tile_ids)
