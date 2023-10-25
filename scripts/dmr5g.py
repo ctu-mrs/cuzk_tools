@@ -21,6 +21,15 @@ WGS_TO_SJTSK = pyproj.Transformer.from_crs(WGS,SJTSK)
 SJTSK_TO_WGS = pyproj.Transformer.from_crs(SJTSK,WGS)
 SJTSK_TO_UTM_33U = pyproj.Transformer.from_crs(SJTSK,UTM_33U)
 
+def get_wgs_to_utm_trans(utm_letter, utm_num):
+    if utm_letter == "N":
+        utm = "EPSG:326" + str(utm_num)
+    elif utm_letter == "S":
+        utm = "EPSG:327" + str(utm_num)
+    else:
+        raise UTMZoneError("utm letter '{}' is not one of (N,S).".format(utm_letter, utm_num))
+    return pyproj.Transformer.from_crs(WGS,utm)
+
 def get_sjtsk_to_utm_trans(utm_letter, utm_num):
     if utm_letter == "N":
         utm = "EPSG:326" + str(utm_num)
