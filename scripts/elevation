@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+"""
+For more info see elecation_class.py.
+"""
+
 from elevation_class import Elevation
 import rospy
 

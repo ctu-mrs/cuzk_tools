@@ -1,35 +1,28 @@
 #!/usr/bin/env python
 
-import rospy
-import ros_numpy
-import std_msgs
-import tf2_ros
+"""
+This node provides a service for obtaining the elevation of a point given by x,y (point_elevation_get)
+or lat,lon (geopoints_elevation_get) and a coordinate frame.
+"""
 
-from copy import deepcopy
+import rospy
+import tf2_ros
 
 
 from geometry_msgs.msg import Point
 from geographic_msgs.msg import GeoPoint
-from sensor_msgs.msg import PointCloud2, PointField
-import sensor_msgs.point_cloud2 as pc2
 from std_msgs.msg import String
-from visualization_msgs.msg import Marker
 
 from cuzk_tools.srv import PointElevationGet,PointElevationGetResponse
 from cuzk_tools.srv import GeoPointElevationGet,GeoPointElevationGetResponse
 
-import json
-import pylas
 import numpy as np
 import os
-import struct
 from scipy.spatial import cKDTree
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 
 
-from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
-from orto import get_img
-from img2rgb import img2rgb
+from dmr5g import Dmr5gParser, WGS_TO_SJTSK, get_utm_to_sjtsk_trans
 from elevation_class import Elevation,UnsupportedFrameError
 
 
@@ -78,11 +71,11 @@ class PoseElevation(Elevation):
             try:
                 self.utm_local_trans = self.tf_buffer.lookup_transform(self.utm_frame, self.utm_local_frame, rospy.Time())
             except:
-                rospy.logwarn("utm_local: Cannot obtain transform (utm, utm_local).")
+                rospy.logwarn("pose_elevation_srv (utm_local): Cannot obtain transform (utm, utm_local).")
                 if self.utm_local_trans is not None:
-                    rospy.logwarn("utm_local: Using last known transform.")
+                    rospy.logwarn("pose_elevation_srv (utm_local): Using last known transform.")
                 else:
-                    rospy.logwarn("utm_local: Returning default pose msg.")
+                    rospy.logwarn("pose_elevation_srv (utm_local): Returning default pose msg.")
                     return response
                 
             position[0] += self.utm_local_trans.transform.translation.x
@@ -106,10 +99,18 @@ class PoseElevation(Elevation):
         frame = req.frame.data
         response = PointElevationGetResponse()
 
+        if frame == "wgs":
+            rospy.loginfo("Consider using 'geopoint_elevation_get' service for 'wgs' frame. If you want to use this one make sure that lat-->y, lon-->x.")
+
         # Transform coordinates to S-JTSK.
         sjtsk_coords = self.coords2sjtsk(position, frame, response)
         
         # Get tile containing robot position.
+        if not len(self.elev_data_parser.get_tile_ids(sjtsk_coords, 0)):
+            rospy.logwarn("No elevation data for the given coordinates exists. Make sure the coordinates lie in Czehia and that they are correctly formatted and ordered.")
+            rospy.logwarn("Returning default msg.")
+            return response
+        
         tile_id = self.elev_data_parser.get_tile_ids(sjtsk_coords, 0)[0]
 
         # If tile is new, open it, create cKDTree (x,y only), save it.
@@ -131,7 +132,6 @@ class PoseElevation(Elevation):
         nearest_points = self.tile_data[inds,:]
             
         # Interpolate to obtain elevation.
-    
         elevation = self.interpolate_elevation(sjtsk_coords, nearest_points)
 
         # Create response with x,y,z. 
@@ -142,6 +142,8 @@ class PoseElevation(Elevation):
         return response
     
     def handle_geopoint_elevation(self, req):
+        if not req.frame.data == "wgs":
+            rospy.logwarn("Frame '{}' is not 'wgs'. This will probably lead to wrong/unexpected results. If you want to use another frame then 'wgs' try 'point_elevation_get' service.".format(req.frame.data))
         p = Point(req.point.longitude, req.point.latitude, req.point.altitude)
         req.point = p
 

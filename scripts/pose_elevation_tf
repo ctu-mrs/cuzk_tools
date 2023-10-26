@@ -1,33 +1,31 @@
 #!/usr/bin/env python
 
+"""
+This node follows a tf (which is set by the set_elevation_tf service OR by setting default_followed_tf)
+and publishes another tf with the original x,y coordinates but with the addition of elevation as the z coordinate.
+
+As always works only in Czechia.
+
+The new frame is called 'original_frame_elev'.
+"""
+
 import rospy
-import ros_numpy
-import std_msgs
 import tf2_ros
 
-from copy import deepcopy
 
-from sensor_msgs.msg import PointCloud2, PointField
-import sensor_msgs.point_cloud2 as pc2
 from std_msgs.msg import String
-from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Transform, TransformStamped
+from geometry_msgs.msg import TransformStamped
 
 from cuzk_tools.srv import ElevationSetTF, ElevationSetTFResponse
 
-import json
-import pylas
 import random
 import numpy as np
 import os
-import struct
 from scipy.spatial import cKDTree
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 
 
-from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
-from orto import get_img
-from img2rgb import img2rgb
+from dmr5g import Dmr5gParser, get_utm_to_sjtsk_trans
 from elevation_class import Elevation,UnsupportedFrameError
 
 

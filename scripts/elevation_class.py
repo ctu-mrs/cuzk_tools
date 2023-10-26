@@ -1,3 +1,16 @@
+"""
+The source code for the 'elevation' node.
+
+The node provides two services and some related publishers:
+    1. elevation_publish - the request contains a point in WGS, a radius in meters
+        and the frames in which we want to publish (boolean flag for each of the four frames).
+        The service then publishes the elevation data of the area indicated by the request as PointCloud2.
+
+    2. elevation_get - the request is the same. The service then returns the elevation data as a response.
+
+The open data source is 'ZABAGED Výškopis DMR5G' of the ČÚZK. Only works for the Czechia area.
+"""
+
 import rospy
 import ros_numpy
 import std_msgs

@@ -20,23 +20,18 @@
         <param name="default_followed_tf" type="string" value="base_link"/>
     </node>
 
-    <!-- <node pkg="cuzk_tools" type="marker_pub" name="marker_pub" output="screen">
-    </node> -->
-
-    <node pkg="cuzk_tools" type="pcd2mesh" name="pcd2mesh" output="screen">
-        <param name="pcd_topic" type="string" value="elevation_utm_local"/>
-        <param name="default_utm_zone" type="string" value="$(arg default_utm_zone)"/>
-        <param name="default_hole_filling_power" type="double" value="20."/>
-    </node>
-
     <node pkg="cuzk_tools" type="orto2mesh" name="orto2mesh" output="screen">
         <param name="pcd_topic" type="string" value="elevation_utm_local"/>
         <param name="default_utm_zone" type="string" value="$(arg default_utm_zone)"/>
     </node>
 
-    <!-- <node pkg="$(find vigir_point_cloud_proc)" type="cloud_to_mesh_node" name="cloud_to_mesh_node" output="screen" respawn="true">
-        <remap from="~/cloud" to="/elevation_utm_local" />
+    <!-- 
+        This one is obsolete as orto2mesh does a better job.
+        
+        <node pkg="cuzk_tools" type="pcd2mesh" name="pcd2mesh" output="screen">
+        <param name="pcd_topic" type="string" value="elevation_utm_local"/>
+        <param name="default_utm_zone" type="string" value="$(arg default_utm_zone)"/>
+        <param name="default_hole_filling_power" type="double" value="20."/>
     </node> -->
-    <!-- <include file="$(find vigir_point_cloud_proc)/pcd2mesh.launch"/> -->
 
 </launch>    

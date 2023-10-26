@@ -1,5 +1,18 @@
 #!/usr/bin/env python
 
+""" 
+NOTE: This node is sort of obsolete as the orto2mesh node does overall a better job.
+
+A ROS node generating a mesh mainly used for visualization of a robot in open terrain. 
+The data used for this comes from ČÚZK and is completely free to access.
+The data covers the whole of Czechia and nothing more. Two specific data sources are
+being used: 'ZABAGED Výškopis DMR5G' elevation data and 'Ortofoto ČR' ortophotos.
+
+How it works: Each point of the elevation data is coloured according to the photo,
+A triangular mesh is then automatically generated using open3d and pymeshfix.
+"""
+
+
 from img2rgb import img2rgb
 from ros_open3d_conversion import convertCloudFromRosToOpen3d, ball_pivoting_reconstruction
 from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
@@ -65,13 +78,6 @@ class Pcd2Mesh():
         else:
             points, triangles = ball_pivoting_reconstruction(o3d_pcd, hole_filling_power = self.hole_filling_power)
 
-        #points = np.asarray(o3d_pcd.points) #
-
-        #triangles = np.asarray(mesh.triangles)
-        #n = len(triangles)
-
-        #triangles = points[triangles]   #
-        #triangles = triangles.reshape(3*n,3)
         colors = []
 
         if self.bounds and self.img_path != "":
@@ -95,11 +101,6 @@ class Pcd2Mesh():
             colors = [ColorRGBA(r=c[0], g=c[1], b=c[2], a=1.) for c in triangle_colors]     # slow
             colors = np.repeat(colors, 3)
 
-        """ 
-        header = Header()
-        header.stamp = rospy.Time.now()
-        header.frame_id = "" """
-
         marker = Marker(header=req.header,
                         ns="mesh",
                         id=0,
@@ -110,9 +111,6 @@ class Pcd2Mesh():
                         lifetime=rospy.Duration(0),
                         points = marker_points,
                         colors = colors)
-
-        #msg = MarkerArray()
-        #msg.points = marker_points
 
         rospy.loginfo("pcd2mesh: Publishing mesh at {}.".format(self.topic_name))
         self.pcd_pub.publish(marker)

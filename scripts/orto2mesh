@@ -1,5 +1,16 @@
 #!/usr/bin/env python
 
+""" 
+A ROS node generating a mesh mainly used for visualization of a robot in open terrain. 
+The data used for this comes from ČÚZK and is completely free to access.
+The data covers the whole of Czechia and nothing more. Two specific data sources are
+being used: 'ZABAGED Výškopis DMR5G' elevation data and 'Ortofoto ČR' ortophotos.
+
+How it works: In short the pixels of the ortophoto photo are converted to a grid of points and for
+each point elevation is interpolated from the known data. The coloured xyz points then create
+the mesh. 
+"""
+
 from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans, get_wgs_to_utm_trans
 
 from cuzk_tools.msg import OrtoImage
