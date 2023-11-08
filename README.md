@@ -1,7 +1,7 @@
 # CUZK-TOOLS
 
 ## Description
-The ROS package **cuzk_tools** contains ROS nodes providing some services using open data from the [Czech State Administration of Land Surveying and Cadastre (**CUZK**)](https://geoportal.cuzk.cz/(S(1bww4u03zr1k4oogfysuwvpu))/Default.aspx?lng=EN&head_tab=sekce-02-gp&mode=TextMeta&text=dSady_uvod&menu=20&news=yes).
+The ROS package **cuzk_tools** contains ROS nodes providing ROS services using open data from the [Czech State Administration of Land Surveying and Cadastre (**CUZK**)](https://geoportal.cuzk.cz/(S(1bww4u03zr1k4oogfysuwvpu))/Default.aspx?lng=EN&head_tab=sekce-02-gp&mode=TextMeta&text=dSady_uvod&menu=20&news=yes).
 
 Here is an overview of the provided functionalities:
  - node: **elevation**
@@ -54,6 +54,48 @@ where **x** is the **longitude**, **y** is the **latitude** (WGS84), z is arbitr
 
 4. The elevation data is then published to the **elevation_pcd** topic as [PointCloud2](http://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/PointCloud2.html) and can be viewed in rviz.
 
+#### Example Service Calls
+
+```
+rosservice call /elevation_get "point: {x: 14.0, y: 50.0, z: 0.0}
+  radius: {data: 400.0}
+  sjtsk: {data: false}
+  utm: {data: true}
+  utm_local: {data: true}
+  wgs: {data: false}"
+```
+
+```
+rosservice call /elevation_publish "point: {x: 14.0, y: 50.0, z: 0.0}
+  radius: {data: 400.0}
+  sjtsk: {data: false}
+  utm: {data: false}
+  utm_local: {data: false}
+  wgs: {data: true}"
+```
+
+```
+rosservice call /geopoint_elevation_get "point:
+  latitude: 50.0
+  longitude: 14.0
+  altitude: 0.0
+frame:
+  data: 'wgs'" 
+```
+
+```
+rosservice call /point_elevation_get "point:
+  x: 21.0
+  y: 42.0
+  z: 0.0
+frame:
+  data: 'utm_local'" 
+```
+
+```
+rosservice call /set_elevation_tf "frame:
+  data: 'base_link'" 
+```
 
 ### Topography
 #### Data

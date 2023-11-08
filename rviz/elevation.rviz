@@ -28,7 +28,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: ""
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -95,7 +95,7 @@ Visualization Manager:
       Marker Topic: /elevation_utm_local_orto_mesh
       Name: Marker
       Namespaces:
-        mesh: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
@@ -126,7 +126,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 246.69137573242188
+      Distance: 31.906320571899414
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -134,9 +134,9 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -17.76003646850586
-        Y: -4.789124011993408
-        Z: 261.3174133300781
+        X: 0
+        Y: 0
+        Z: 0
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false

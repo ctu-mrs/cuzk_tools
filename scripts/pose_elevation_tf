@@ -121,8 +121,8 @@ if __name__ == "__main__":
             rate.sleep()
             continue        
         
-        trans.transform.translation.x += random.uniform(-100,100)
-        trans.transform.translation.y += random.uniform(-100,100)
+        #trans.transform.translation.x += random.uniform(-100,100)
+        #trans.transform.translation.y += random.uniform(-100,100)
         
         utm_coords = [trans.transform.translation.x, trans.transform.translation.y] 
         

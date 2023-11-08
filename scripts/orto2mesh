@@ -38,6 +38,7 @@ class Orto2Mesh():
         self.radius = None
         self.grid_points = None
         self.pcd_utm_local = None
+        self.pcd_ready = False
 
         self.ele_img_sub = rospy.Subscriber("elevation_img", OrtoImage, self.update_orto, queue_size=10)
         self.pcd_sub = rospy.Subscriber(pcd_topic, PointCloud2, self.handle_pcd, queue_size=10)
@@ -171,7 +172,7 @@ class Orto2Mesh():
         expanded_mask = expanded_mask.flatten()
 
         return array[expanded_mask]
-
+    
     def update_orto(self,req):
         """
         Main callback. Whenever we get a new ortofoto we want to update the mesh.
@@ -282,7 +283,8 @@ class Orto2Mesh():
         # (the one we expect is a parameter of this node 'pcd_topic') while the ortofoto
         # is always on the same topic so we always catch it in this callback.
         rate = rospy.Rate(20)
-        while self.pcd_utm_local is None:
+        #while self.pcd_utm_local is None:
+        while not self.pcd_ready:
             rospy.loginfo_throttle(2, "Orto2mesh: Waiting for elevation pcd.")
             rate.sleep()
             
@@ -290,6 +292,8 @@ class Orto2Mesh():
         elevation = self.interpolate_elevation(self.grid_points_utm, self.pcd_utm_local)
         points = np.concatenate([self.grid_points_utm, elevation.reshape(-1,1)], axis=1)
         mask = ~np.isnan(elevation)
+
+        self.pcd_ready = False
         
         self.visualize_grid(points, self.img, tile_ids)
 
@@ -335,12 +339,12 @@ class Orto2Mesh():
             
             if pcd_frame == "sjtsk":
                 pcd_data_xy = sjtsk_to_utm_transformer.transform(pcd_data[:,0], pcd_data[:,1])
-                pcd_data = np.vstack([pcd_data_xy[0], pcd_data_xy[1], pcd_data[2]]).T
+                pcd_data = np.vstack([pcd_data_xy[0], pcd_data_xy[1], pcd_data[:,2]]).T
                 pcd_data -= [x_offset, y_offset, 0]
                 self.pcd_utm_local = pcd_data 
 
             elif pcd_frame == "utm":
-                pcd_data -= [x_offset, y_offset]
+                pcd_data = pcd_data - [x_offset, y_offset, 0]
                 self.pcd_utm_local = pcd_data 
             
             elif pcd_frame == "wgs": 
@@ -351,6 +355,8 @@ class Orto2Mesh():
 
             else:
                 raise UnsupportedFrameError("Frame {} of orto image is not one of ('sjtsk','utm','utm_local','wgs').".format(self.img_frame))
+
+        self.pcd_ready = True
 
     def visualize_grid(self, points, colors, tile_ids):
         """

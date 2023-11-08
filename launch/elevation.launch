@@ -21,7 +21,7 @@
     </node>
 
     <node pkg="cuzk_tools" type="orto2mesh" name="orto2mesh" output="screen">
-        <param name="pcd_topic" type="string" value="elevation_utm_local"/>
+        <param name="pcd_topic" type="string" value="elevation_utm"/>
         <param name="default_utm_zone" type="string" value="$(arg default_utm_zone)"/>
     </node>
 

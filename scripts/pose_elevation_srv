@@ -108,6 +108,7 @@ class PoseElevation(Elevation):
         # Get tile containing robot position.
         if not len(self.elev_data_parser.get_tile_ids(sjtsk_coords, 0)):
             rospy.logwarn("No elevation data for the given coordinates exists. Make sure the coordinates lie in Czehia and that they are correctly formatted and ordered.")
+            rospy.logwarn("An example of coordinates that should work is x: -744572.45, y: -1042164.50")
             rospy.logwarn("Returning default msg.")
             return response
         
