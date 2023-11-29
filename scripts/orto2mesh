@@ -26,6 +26,8 @@ from PIL import Image
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 import tf2_ros
 
+from interpolate_elevation import interpolate_elevation
+
 class UnsupportedFrameError(Exception):
     pass
 
@@ -92,32 +94,6 @@ class Orto2Mesh():
         X, Y = np.meshgrid(x_points, y_points)
 
         return np.concatenate((X.flatten().reshape(-1,1),Y.flatten().reshape(-1,1)),axis=1)
-    
-    def interpolate_elevation(self, points, near_points):
-        """
-        Interpolate elevation from an array of xyz points to an array of xy points.
-
-        Parameters
-        ----------
-        points : np.ndarray
-            Points (xy) which elevation (z coord) we want to obtain by interpolation.
-        near_points : np.ndarray
-            Points (xyz) with known elevation which we use for the interpolation.
-        """
-
-        interpolator = LinearNDInterpolator(near_points[:,:2], near_points[:,2])
-
-        elevation = interpolator(points)
-
-        # Some points on the outskirts cannot be linearly interpolated to. Use 'nearest' instead.
-        nan_points = points[np.isnan(elevation)]
-
-        if len(nan_points) > 0:
-            interpolator = NearestNDInterpolator(near_points[:,:2], near_points[:,2])
-            nan_elevation = interpolator(nan_points)
-            elevation[np.isnan(elevation)] = nan_elevation
-        
-        return elevation
 
     def generate_tile_ids(self, w, h):
         """
@@ -289,7 +265,7 @@ class Orto2Mesh():
             rate.sleep()
             
         # Interpolate to obtain elevation.
-        elevation = self.interpolate_elevation(self.grid_points_utm, self.pcd_utm_local)
+        elevation = interpolate_elevation(self.grid_points_utm, self.pcd_utm_local)
         points = np.concatenate([self.grid_points_utm, elevation.reshape(-1,1)], axis=1)
         mask = ~np.isnan(elevation)
 

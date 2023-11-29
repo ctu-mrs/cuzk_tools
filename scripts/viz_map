@@ -157,10 +157,11 @@ class VizNode:
         # Convert bounds latitudes and longitudes to UTM (no
         # altitude), convert UTM points to geometry_msgs/Point
         bbox = self.map.bounds
-        p0 = Point(bbox.min_pt.longitude, bbox.min_pt.latitude, 0.)
-        p1 = Point(bbox.max_pt.longitude, bbox.min_pt.latitude, 0.)
-        p2 = Point(bbox.max_pt.longitude, bbox.max_pt.latitude, 0.)
-        p3 = Point(bbox.min_pt.longitude, bbox.max_pt.latitude, 0.)
+        some_altitude = self.map.points[0].position.altitude 
+        p0 = Point(bbox.min_pt.longitude, bbox.min_pt.latitude, some_altitude)
+        p1 = Point(bbox.max_pt.longitude, bbox.min_pt.latitude, some_altitude)
+        p2 = Point(bbox.max_pt.longitude, bbox.max_pt.latitude, some_altitude)
+        p3 = Point(bbox.min_pt.longitude, bbox.max_pt.latitude, some_altitude)
 
         #min_lat, min_lon, max_lat, max_lon = bounding_box.getLatLong(bbox)
         #p0 = geodesy.utm.fromLatLong(min_lat, min_lon).toPoint()
@@ -210,7 +211,7 @@ class VizNode:
                 point = self.map_points[wu_point_index]
 
                 if point:  # this component is a way point
-                    p = Point(point.position.latitude, point.position.longitude, 0.)
+                    p = Point(point.position.latitude, point.position.longitude, point.position.altitude)
                     if prev_point:
                         marker.points.append(prev_point)
                         marker.points.append(p)
@@ -236,7 +237,7 @@ class VizNode:
             )
             index += 1
             # use easting and northing coordinates (ignoring altitude)
-            marker.pose.position = Point(wp.position.latitude, wp.position.longitude, 0.)
+            marker.pose.position = Point(wp.position.latitude, wp.position.longitude, wp.position.altitude)
             marker.pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
             self.msg.markers.append(marker)
 

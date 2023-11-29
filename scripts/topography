@@ -13,7 +13,7 @@ from unique_id import fromURL
 from jsk_recognition_msgs.msg import PolygonArray
 from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import Polygon, PolygonStamped, Point32, Point
-from cuzk_tools.srv import GetTopography,GetTopographyResponse
+from cuzk_tools.srv import GetTopography,GetTopographyResponse, ElevationGet
 
 import pylas
 import fiona
@@ -27,13 +27,15 @@ import shapely.geometry as shap
 
 from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str
 from dmr5g import WGS_TO_SJTSK
+from interpolate_elevation import interpolate_elevation
 
 SCALE = 1/100
 
 class Topography:
-    def __init__(self, vis_bool=True):
+    def __init__(self, vis_bool=True, include_elevation=True):
         rospy.init_node('topography')
-
+        
+        self.include_elevation = include_elevation
         self.check_file_updated()
 
         self.sjtsk_frame = "sjtsk"
@@ -72,7 +74,8 @@ class Topography:
             if updated != prev_updated:
                 rospy.logwarn("Present GPKG file: {}, Newest GPKG file: {}. Consider downloading the newest GPKG file: \n\
 Go to https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml and click a link which looks like https://atom.cuzk.cz/ZABAGED-GPKG/datasetFeeds/CZ-00025712-CUZK_ZABAGED-GPKG_1.xml. \n\
-Finally download newest data using a link which looks like https://openzu.cuzk.cz/opendata/ZABAGED-GPKG/epsg-5514/ZABAGED-5514-gpkg-20230715.zip".format(prev_updated, updated))
+Finally download newest data using a link which looks like https://openzu.cuzk.cz/opendata/ZABAGED-GPKG/epsg-5514/ZABAGED-5514-gpkg-20230715.zip and save the gpkg file \
+under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
 
 
             with open(updated_fn, 'w+') as file:
@@ -191,6 +194,40 @@ Finally download newest data using a link which looks like https://openzu.cuzk.c
         point = [req.point.x, req.point.y]
         point_sjtsk = WGS_TO_SJTSK.transform(point[1],point[0])
 
+        if self.include_elevation:
+            rospy.wait_for_service('elevation_get')
+            try:
+                elevation_get = rospy.ServiceProxy('elevation_get', ElevationGet)
+                elev_point = req.point
+                elev_radius = req.radius
+
+                elev_sjtsk = std_msgs.msg.Bool()
+                elev_sjtsk.data = True
+
+                elev_utm = std_msgs.msg.Bool()
+                elev_utm.data = False
+
+                elev_utm_local = std_msgs.msg.Bool()
+                elev_utm_local.data = False
+
+                elev_wgs = std_msgs.msg.Bool()
+                elev_wgs.data = False
+                 
+                elev_response = elevation_get(elev_point,
+                                               elev_radius,
+                                               elev_sjtsk,
+                                               elev_utm,
+                                               elev_utm_local,
+                                               elev_wgs)
+                
+                elev_data = elev_response.elevation_sjtsk
+                elev_data = ros_numpy.numpify(elev_data)
+                #elev_frame = elev_data.header.frame_id
+                elev_data = elev_data.view((np.float32,3))
+
+            except rospy.ServiceException as e:
+                print("Service call failed: %s"%e)
+        
         x_min = point_sjtsk[0] - radius
         y_min = point_sjtsk[1] - radius
         x_max = point_sjtsk[0] + radius
@@ -290,7 +327,7 @@ Finally download newest data using a link which looks like https://openzu.cuzk.c
                             
 
                         elif geom_type == 'MultiPolygon':
-                            data = np.array(coords[0][0])                            
+                            data = np.array(coords[0][0])                          
 
                             dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
                             
@@ -318,6 +355,16 @@ Finally download newest data using a link which looks like https://openzu.cuzk.c
                             raise TypeError("Expected types are MultiLineString, MultiPolygon and Point. Got {} instead.".format(geom_type))
 
                         msg.features.append(map_feature)
+
+        if self.include_elevation:
+            x = [p.position.latitude for p in msg.points]
+            y = [p.position.longitude for p in msg.points]
+            z = interpolate_elevation(np.array([x,y]).T, elev_data)
+
+            for p,zi in zip(msg.points,z):
+                p.position.altitude = zi 
+            #data = np.vstack((x, y, interpolate_elevation(np.array([x,y]).T, elev_data))).T
+
 
         self.topography_pub.publish(msg)
         #self.visualize_topography_msg(msg)
