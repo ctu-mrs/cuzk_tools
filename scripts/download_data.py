@@ -19,7 +19,7 @@ from elevation_class import UnsupportedFrameError
 
 class Dmr5gDownloader():
     def __init__(self):
-        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/elevation/"
 
         if not os.path.exists(self.cache_dir):
             os.mkdir(self.cache_dir)

@@ -33,7 +33,7 @@ class PoseElevation(Elevation):
         self.utm_frame = "utm"
         self.utm_local_frame = "utm_local"
 
-        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/elevation/"
 
         if not os.path.exists(self.cache_dir):
             os.mkdir(self.cache_dir)

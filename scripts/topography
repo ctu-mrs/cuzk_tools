@@ -3,6 +3,7 @@
 import rospy
 import ros_numpy
 import std_msgs
+from datetime import datetime
 
 from cuzk_tools.msg import Polygons, LineString, LineStringArray, PointArray, TopographyCategory
 from cuzk_tools.msg import Topography as TopographyMsg
@@ -25,42 +26,70 @@ import xml.etree.ElementTree as ET
 import urllib.request
 import shapely.geometry as shap
 
-from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str
+from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str, original_categories_str
 from dmr5g import WGS_TO_SJTSK
 from interpolate_elevation import interpolate_elevation
 
 SCALE = 1/100
+DATA_PATH = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/data.gpkg"
 
 class Topography:
     def __init__(self, vis_bool=True, include_elevation=True):
         rospy.init_node('topography')
+
+        rospy.loginfo("TOPOGRAPHY: If you are running the topography node for the first time, \
+you probably need to download the data.gpkg file from the CUZK. This file contains all the data \
+and is around 12 GB. Download it manually like this (yes, the process seems strange, I didn't find another way to get the file...):\n\
+ - Go to https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml \n\
+ - Click a link which looks like https://atom.cuzk.cz/ZABAGED-GPKG/datasetFeeds/CZ-00025712-CUZK_ZABAGED-GPKG_1.xml \n\
+ - Download the newest data using a link which looks like https://openzu.cuzk.cz/opendata/ZABAGED-GPKG/epsg-5514/ZABAGED-5514-gpkg-20230715.zip \n\
+ - Save the gpkg file ideally over at $HOME/.ros/cache/cuzk_tools/topography/data.gpkg (or at another path, but then you need to change some of the paths hardcoded in this package) \n\
+ - Run gpkg_parser.py (just a one time thing) to split the giant data file into smaller ones. This can take some time (~40 minutes). If it crashes due to no RAM, consider decreasing the RAM_LIMIT in gpkg_parser.py.")
         
         self.include_elevation = include_elevation
         self.check_file_updated()
 
         self.sjtsk_frame = "sjtsk"
 
-        self.data_dir = "/home/aherold/ws/src/cuzk_tools/data/gpkg_files/"
+        #self.data_dir = "/home/aherold/ws/src/cuzk_tools/data/gpkg_files/"
+
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/gpkg_files/"
+
+        if not os.path.exists(self.cache_dir):
+            os.mkdir(self.cache_dir)
         
         self.topography_pub = rospy.Publisher('topography', GeographicMap, queue_size=10, latch=True)
 
+        self.categories_str = self.get_categories_str(self.cache_dir)
+
         self.vis_pubs = dict()
         if vis_bool:
-            for c in categories_str:
+            for c in self.categories_str:
                 pub_name = 'topography'+'/'+c
                 self.vis_pubs[c] = rospy.Publisher(pub_name, PolygonArray, queue_size=10, latch=True)
                                     
         rospy.Service('topography', GetTopography, self.handle_topography_service)
 
+    def get_categories_str(self, data_dir):
+        some_file = data_dir + os.listdir(data_dir)[0]
+        if len(fiona.listlayers(some_file)) == 3*len(categories_str):
+            return categories_str
+        elif len(fiona.listlayers(some_file)) == 3*len(original_categories_str):
+            return original_categories_str
+        else:
+            print("Number of layers in your data files is inconsistent with both original categories and reduced categories. Defaulting to using reduced categories, but this should not happen and it might crash down the road.")
+            return categories_str
+
     def check_file_updated(self):
         url = "https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml"
-        updated_fn = 'src/cuzk_tools/cache/gpkg_updated.txt'
+        #updated_fn = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/gpkg_updated.txt" 
 
-        prev_updated = ""
+        #prev_updated = ""
 
         try:
-            with open(updated_fn, 'r') as file:
-                prev_updated = file.readline()
+            prev_updated = os.path.getmtime(DATA_PATH)
+            #with open(updated_fn, 'r') as file:
+            #    prev_updated = file.readline()
         except:
             pass
 
@@ -70,27 +99,31 @@ class Topography:
             root = ET.fromstring(xml_data)
             
             updated = root.find(f"{{{'http://www.w3.org/2005/Atom'}}}updated").text
+            updated_object = datetime.strptime(updated, '%Y-%m-%dT%H:%M:%S%z')
+            updated_timestamp = int(updated_object.timestamp())
 
-            if updated != prev_updated:
-                rospy.logwarn("Present GPKG file: {}, Newest GPKG file: {}. Consider downloading the newest GPKG file: \n\
+            if updated_timestamp > prev_updated:
+                dt_prev = datetime.fromtimestamp(prev_updated)
+                dt_prev_str = dt_prev.strftime('%Y-%m-%dT%H:%M:%S%z')
+                rospy.logwarn(f"Present GPKG file: {dt_prev_str}, Newest GPKG file: {updated}. Consider downloading the newest GPKG file: \n\
 Go to https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml and click a link which looks like https://atom.cuzk.cz/ZABAGED-GPKG/datasetFeeds/CZ-00025712-CUZK_ZABAGED-GPKG_1.xml. \n\
 Finally download newest data using a link which looks like https://openzu.cuzk.cz/opendata/ZABAGED-GPKG/epsg-5514/ZABAGED-5514-gpkg-20230715.zip and save the gpkg file \
-under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
+under cuzk_tools/data/data.gpkg. Then run gpkg_parser.py to split the giant data file into smaller ones.")
 
 
-            with open(updated_fn, 'w+') as file:
-                file.write(updated)
+            #with open(updated_fn, 'w+') as file:
+            #    file.write(updated)
 
             #https://atom.cuzk.cz/ZABAGED-GPKG/ZABAGED-GPKG.xml
             return response, xml_data
         except:
-            rospy.loginfo("Tried to check if online ZABAGED polohopis file is updated but failed (maybe due to no internet connection?).")
+            rospy.logwarn("Tried to check if online ZABAGED polohopis file is updated but failed (maybe due to no internet connection?).")
     
 
-        for i,entry in enumerate(self.root.iter(f"{{{self.namespace['atom']}}}entry")):
-            if i == id:
-                update_date = entry.find(f"{{{self.namespace['atom']}}}updated").text
-                return update_date
+        #for i,entry in enumerate(self.root.iter(f"{{{self.namespace['atom']}}}entry")):
+        #    if i == id:
+        #        update_date = entry.find(f"{{{self.namespace['atom']}}}updated").text
+        #        return update_date
     
     def add_header(self, msg, frame):
         header = std_msgs.msg.Header()
@@ -244,7 +277,7 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
         rects = get_rects(x_min,y_min,x_max,y_max,H,W)
 
         for rect in rects:
-            fn = self.data_dir  + 'topography' + '_' \
+            fn = self.cache_dir  + 'topography' + '_' \
                                 + str(rect[0])[1:] + '_' \
                                 + str(rect[1])[1:] + '_' \
                                 + str(rect[2])[1:] + '_' \
@@ -254,7 +287,7 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
             for layer_name in fiona.listlayers(fn):
 
                 category_name = layer_name.split('_')[0]
-                category_ind = categories_str.index(category_name)
+                category_ind = self.categories_str.index(category_name)
 
                 geom_name = layer_name.split('_')[1]
 
@@ -272,10 +305,14 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
 
                         map_feature = MapFeature()
                         map_feature.id.uuid = fromURL(self.id2url(id)).bytes
-                        key_val = KeyValue()
-                        key_val.key = "category"
-                        key_val.value = category_name
-                        map_feature.props.append(key_val)
+
+                        category_key_val = KeyValue()
+                        category_key_val.key = "category"
+                        category_key_val.value = category_name
+                        geom_key_val = KeyValue()
+                        geom_key_val.key = "geom_type"
+                        geom_key_val.value = geom_type
+                        map_feature.props += [category_key_val, geom_key_val]
 
                         if geom_type == 'Point':
                             data = coords
@@ -299,7 +336,8 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
 
                         elif geom_type == 'MultiLineString':
                             if len(coords) > 1:
-                                print("Aw shucks")
+                                print("So far it has always been a single line string, so this code is actually not ready for multiple line strings, so we just take the first one. You will have to adjust the code, sorry!")
+                                coords = [coords[0]]
 
                             data = np.array(coords[0])
 
@@ -327,6 +365,10 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
                             
 
                         elif geom_type == 'MultiPolygon':
+                            if len(coords) > 1:
+                                print("So far it has always been a single polygon, so this code is actually not ready for multiple polygons, so we just take the first one. You will have to adjust the code, sorry!")
+                                coords = [coords[0]]
+
                             data = np.array(coords[0][0])                          
 
                             dists = ((data[:,0] - point_sjtsk[0])**2 + (data[:,1] - point_sjtsk[1])**2)**(1/2)
@@ -357,14 +399,16 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
                         msg.features.append(map_feature)
 
         if self.include_elevation:
-            x = [p.position.latitude for p in msg.points]
-            y = [p.position.longitude for p in msg.points]
-            z = interpolate_elevation(np.array([x,y]).T, elev_data)
+            try:
+                x = [p.position.latitude for p in msg.points]
+                y = [p.position.longitude for p in msg.points]
+                z = interpolate_elevation(np.array([x,y]).T, elev_data)
 
-            for p,zi in zip(msg.points,z):
-                p.position.altitude = zi 
-            #data = np.vstack((x, y, interpolate_elevation(np.array([x,y]).T, elev_data))).T
-
+                for p,zi in zip(msg.points,z):
+                    p.position.altitude = zi 
+                #data = np.vstack((x, y, interpolate_elevation(np.array([x,y]).T, elev_data))).T
+            except Exception as e:
+                rospy.logwarn(f"TOPOGRAPHY: Not able to use elevation data (maybe no internet connection)... threw the following error:\n{e}")
 
         self.topography_pub.publish(msg)
         #self.visualize_topography_msg(msg)
@@ -376,5 +420,6 @@ under cuzk_tools/data/data.gpkg.".format(prev_updated, updated))
 
 
 if __name__ == "__main__":
+    default_utm_zone = rospy.get_param('/elevation/default_utm_zone', None)
     node = Topography()
     rospy.spin()

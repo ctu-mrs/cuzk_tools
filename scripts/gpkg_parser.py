@@ -9,6 +9,8 @@ from time import sleep
 import shutil
 from sys import getsizeof
 import matplotlib.pyplot as plt
+import os
+
 """ 
     Czechia SJTSK bounds are:
         XMin: -927817.5799999982
@@ -24,6 +26,10 @@ import matplotlib.pyplot as plt
     V X to jde po 2500 (  -740 000 ->   -742 500).
     V Y to jde po 2000 (-1 040 000 -> -1 042 000).
 """
+
+USE_ORIGINAL_CATEGORIES = False
+
+RAM_LIMIT = 1800000
 
 H = 8000
 W = 10000
@@ -74,6 +80,9 @@ typulice_dict = dict(roads=['026','926'], footways=['025','125','225','925'])
 categories = [buildings,roads,rails,footways,water,forest,antiforest,agriculture,untraversable,traversable,obstacles]
 categories_str = ['buildings','roads','rails','footways','water','forest',
                   'antiforest','agriculture','untraversable','traversable','obstacles']
+
+original_categories = [[c] for c in sum(categories, [])]
+original_categories_str = sum(categories, [])
 
 geom_types = ['Point', 'MultiLineString', 'MultiPolygon'] 
 
@@ -188,24 +197,27 @@ def visualize_layer(gpkg_file, layer_name):
     plt.scatter(data[:,0],data[:,1])
     plt.show()
 
-def split_gpkg_into_files(gpkg_file, fn_preposition):
+def split_gpkg_into_files(gpkg_file, fn_preposition, use_original_categories):
     #layer_schemas = get_layer_schemas(gpkg_file)
 
-    global categories, categories_str, geom_types
+    global categories, categories_str, original_categories, original_categories_str, geom_types
     rect_ranges = get_rectangle_ranges(H,W)
 
     print("Creating GPKG files.")
 
-    first_fn = 'src/cuzk_tools/data/gpkg_files/'+ fn_preposition + '_' \
+    first_fn = os.environ['HOME'] + '/.ros/cache/cuzk_tools/topography/gpkg_files/'+ fn_preposition + '_' \
                                                 + str(rect_ranges[0][0])[1:] + '_' \
                                                 + str(rect_ranges[0][1])[1:] + '_' \
                                                 + str(rect_ranges[0][2])[1:] + '_' \
                                                 + str(rect_ranges[0][3])[1:]
     
-    create_categorized_gpkg_file(first_fn, categories_str, geom_types)
+    if use_original_categories:
+        create_categorized_gpkg_file(first_fn, original_categories_str, geom_types)
+    else:
+        create_categorized_gpkg_file(first_fn, categories_str, geom_types)
 
     for rect_range in tqdm(rect_ranges[1:]):
-        fn = 'src/cuzk_tools/data/gpkg_files/'  + fn_preposition + '_' \
+        fn = os.environ['HOME'] + '/.ros/cache/cuzk_tools/topography/gpkg_files/'  + fn_preposition + '_' \
                                                 + str(rect_range[0])[1:] + '_' \
                                                 + str(rect_range[1])[1:] + '_' \
                                                 + str(rect_range[2])[1:] + '_' \
@@ -213,10 +225,13 @@ def split_gpkg_into_files(gpkg_file, fn_preposition):
         shutil.copy2(first_fn, fn)
 
     print("Parsing layers.")
-    for i,category in tqdm(enumerate(categories)):
+    categories_to_use =  original_categories if use_original_categories else categories
+    categories_str_to_use =  original_categories_str if use_original_categories else categories_str
+
+    for i,category in tqdm(enumerate(categories_to_use)):
 
         data = defaultdict(lambda: defaultdict(list))
-        category_str = categories_str[i]
+        category_str = categories_str_to_use[i]
 
         c = 0
                 
@@ -239,7 +254,7 @@ def split_gpkg_into_files(gpkg_file, fn_preposition):
                                 continue
                         
                         else:
-                            raise NotImplementedError("You messed up, son.")
+                            raise NotImplementedError("This should not happen, probably some new type of ulice has been used. Edit 'typulice_dict'.")
 
                     coords = feature['geometry']['coordinates']
                     geom_type = feature['geometry']['type']
@@ -288,8 +303,8 @@ def split_gpkg_into_files(gpkg_file, fn_preposition):
 
                     c += 1
 
-                    if c >= 1800000:
-                        print("Data taking a lot of RAM. Preemptively relieving.")
+                    if c >= RAM_LIMIT:
+                        print("Data taking a lot of RAM. Preemptively relieving (this is not a bad thing, it is bound to happen a few times).")
                         
                         write_to_file(data,fn_preposition,category_str)
                         
@@ -303,7 +318,7 @@ def split_gpkg_into_files(gpkg_file, fn_preposition):
 
 def write_to_file(data,fn_preposition,category_str):
     for rect,features_by_geom_dict in tqdm(data.items()):
-        out_fn = 'src/cuzk_tools/data/gpkg_files/'  + fn_preposition + '_' \
+        out_fn = os.environ['HOME'] + '/.ros/cache/cuzk_tools/topography/gpkg_files/'  + fn_preposition + '_' \
                                                         + str(rect[0])[1:] + '_' \
                                                         + str(rect[1])[1:] + '_' \
                                                         + str(rect[2])[1:] + '_' \
@@ -319,8 +334,8 @@ def write_to_file(data,fn_preposition,category_str):
 
 
 if __name__ == "__main__":
-    gpkg_file_path = "src/cuzk_tools/data/data.gpkg"
+    gpkg_file_path = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/data.gpkg"
     #get_layer_schemas(gpkg_file_path)
-    split_gpkg_into_files(gpkg_file_path, 'topography')
+    split_gpkg_into_files(gpkg_file_path, 'topography', USE_ORIGINAL_CATEGORIES)
 
     #visualize_layer(gpkg_file_path,'BudovaJednotlivaNeboBlokBudov')

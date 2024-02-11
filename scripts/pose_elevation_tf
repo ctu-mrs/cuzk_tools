@@ -36,7 +36,7 @@ class ElevationTF(Elevation):
         self.reference_tf = reference_tf
         self.followed_tf = default_followed_tf
 
-        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/elevation/"
 
         if not os.path.exists(self.cache_dir):
             os.mkdir(self.cache_dir)

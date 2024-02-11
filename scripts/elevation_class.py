@@ -44,7 +44,7 @@ class Elevation:
     def __init__(self, default_utm_zone):
         rospy.init_node('elevation')
 
-        self.cache_dir = os.environ['HOME'] + "/.ros/cache/"
+        self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/elevation/"
 
         if not os.path.exists(self.cache_dir):
             os.mkdir(self.cache_dir)
