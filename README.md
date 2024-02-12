@@ -1,4 +1,5 @@
 # CUZK-TOOLS
+![screenshot of visualization](visualization_screenshot.png)
 
 ## Description
 The ROS package **cuzk_tools** contains ROS nodes providing ROS services using open data from the [Czech State Administration of Land Surveying and Cadastre (**CUZK**)](https://geoportal.cuzk.cz/(S(1bww4u03zr1k4oogfysuwvpu))/Default.aspx?lng=EN&head_tab=sekce-02-gp&mode=TextMeta&text=dSady_uvod&menu=20&news=yes).
@@ -150,10 +151,7 @@ As with the elevation node, the input point is in WGS coordinates (x=long (!!!),
 
 ### Elevation with Topography
 
-If you are looking to combine both visualizations (i.e. elevation & ortofoto mesh with topography markers) you can run `elev_topo.launch`. You then call the `elevation_publish` and `topography` services as indicated above and both visualizations should appear in rviz:
-
-![screenshot of visualization](visualization_screenshot.png)
-
+If you are looking to combine both visualizations (i.e. elevation & ortofoto mesh with topography markers) you can run `elev_topo.launch`. You then call the `elevation_publish` and `topography` services as indicated above and both visualizations should appear in rviz.
 
 ### Remarks
  - The topography node produces a GeographicMap for the ZABAGED data. It should be relatively simple to use a different GeographicMap source together with the visualization (e.g. OSM data). The categories that I use with ZABAGED (I reduce their 139 categories to 11 custom ones) should overlap well with OSM.
