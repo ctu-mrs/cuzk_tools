@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(cuzk_tools)
-
+#a
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   geographic_msgs
   std_msgs
+  visualization_msgs
   jsk_recognition_msgs
   message_generation
 )
@@ -86,6 +87,7 @@ generate_messages(
    DEPENDENCIES
    sensor_msgs
    std_msgs
+   visualization_msgs
    geometry_msgs
    geographic_msgs
    jsk_recognition_msgs
