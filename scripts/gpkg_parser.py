@@ -1,13 +1,9 @@
 from collections import defaultdict, OrderedDict
 
 import fiona
-from fiona import Properties
 import numpy as np
-from shapely.geometry import MultiLineString, MultiPolygon, Polygon , Point, shape
 from tqdm import tqdm
-from time import sleep
 import shutil
-from sys import getsizeof
 import matplotlib.pyplot as plt
 import os
 

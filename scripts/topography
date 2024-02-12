@@ -18,7 +18,6 @@ from sensor_msgs.msg import PointCloud2
 from geometry_msgs.msg import Polygon, PolygonStamped, Point32, Point
 from cuzk_tools.srv import GetTopography,GetTopographyResponse, ElevationGet
 
-import pylas
 import fiona
 from tqdm import tqdm
 import numpy as np

@@ -1,17 +1,5 @@
-import urllib.request
-import xml.etree.ElementTree as ET
-from shapely.geometry import Polygon, MultiPolygon, Point
-from rtree import index
-from urllib.request import urlretrieve
-import zipfile
-import pylas
-import matplotlib.pyplot as plt
-import pyproj
 import os
-import json
 import numpy as np
-import requests
-import rospy
 
 from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
 from elevation_class import UnsupportedFrameError

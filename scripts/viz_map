@@ -5,16 +5,8 @@
 import rospy
 
 import sys
-import itertools
-import geodesy.props
-import geodesy.utm
-import geodesy.wu_point
-from geodesy import bounding_box
 
 from geographic_msgs.msg import GeographicMap
-from geographic_msgs.srv import GetGeographicMap
-
-from cuzk_tools.srv import GetTopography,GetTopographyResponse
 
 from geometry_msgs.msg import Point
 from geometry_msgs.msg import Quaternion
@@ -22,11 +14,6 @@ from geometry_msgs.msg import Vector3
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
-
-# dynamic parameter reconfiguration
-from dynamic_reconfigure.server import Server as ReconfigureServer
-import osm_cartography.cfg.VizOSMConfig as Config
-
 
 class VizNode:
     def __init__(self):

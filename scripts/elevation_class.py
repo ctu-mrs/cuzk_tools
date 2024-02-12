@@ -27,15 +27,12 @@ from visualization_msgs.msg import Marker
 from cuzk_tools.srv import ElevationPublish, ElevationGet, ElevationPublishResponse, ElevationGetResponse
 
 import json
-import pylas
 import numpy as np
 import os
-import struct
 
 from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
 from orto import get_img
 from img2rgb import img2rgb
-
 
 class UnsupportedFrameError(Exception):
     pass
