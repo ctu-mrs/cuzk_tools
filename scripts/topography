@@ -36,7 +36,9 @@ SCALE = 1/100
 DATA_PATH = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/data.gpkg"
 
 class Topography:
-    def __init__(self, vis_bool=True, include_elevation=True):
+    def __init__(self, default_utm_zone, vis_bool=True, include_elevation=True):            
+        """ By default topography includes elevation data (include_elevation=True). """
+
         rospy.init_node('topography')
 
         rospy.loginfo("TOPOGRAPHY: If you are running the topography node for the first time, \
