@@ -56,8 +56,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 384.6400146484375
-        Min Value: 221.10000610351562
+        Max Value: 297.7900085449219
+        Min Value: 222.57000732421875
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -89,6 +89,24 @@ Visualization Manager:
         mesh: true
       Queue Size: 100
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /visualization_marker_array
+      Name: MarkerArray
+      Namespaces:
+        agriculture: true
+        antiforest: true
+        bounds_osm: true
+        buildings: true
+        footways: true
+        forest: true
+        obstacles: true
+        roads: true
+        traversable: true
+        water: true
+        waypoints_osm: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -117,7 +135,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1838.4842529296875
+      Distance: 1156.310302734375
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -125,17 +143,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 101.39678192138672
-        Y: 28.015106201171875
-        Z: 134.10812377929688
+        X: -5.605325222015381
+        Y: 16.795635223388672
+        Z: 192.02903747558594
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.8447960615158081
+      Pitch: 1.2747960090637207
       Target Frame: <Fixed Frame>
-      Yaw: 4.501802921295166
+      Yaw: 4.396790027618408
     Saved: ~
 Window Geometry:
   Displays:

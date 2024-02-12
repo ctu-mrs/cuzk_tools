@@ -7,7 +7,6 @@ Panels:
         - /Global Options1
         - /Status1
         - /MarkerArray1
-        - /MarkerArray1/Status1
       Splitter Ratio: 0.5
     Tree Height: 719
   - Class: rviz/Selection
@@ -58,10 +57,16 @@ Visualization Manager:
       Marker Topic: /visualization_marker_array
       Name: MarkerArray
       Namespaces:
+        agriculture: true
+        antiforest: true
         bounds_osm: true
-        buildings_osm: true
-        other_osm: true
-        roads_osm: true
+        buildings: true
+        footways: true
+        forest: true
+        obstacles: true
+        roads: true
+        traversable: true
+        water: true
         waypoints_osm: true
       Queue Size: 100
       Value: true
@@ -69,7 +74,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: sjtsk
+    Fixed Frame: utm_local
     Frame Rate: 30
   Name: root
   Tools:
@@ -101,17 +106,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -774058.625
-        Y: -1048455.0625
-        Z: -0.08223037421703339
+        X: 73.34161376953125
+        Y: -84.07919311523438
+        Z: 269.9389343261719
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5647963285446167
+      Pitch: 1.0747963190078735
       Target Frame: <Fixed Frame>
-      Yaw: 4.781791687011719
+      Yaw: 4.8767900466918945
     Saved: ~
 Window Geometry:
   Displays:
