@@ -169,3 +169,5 @@ If you are looking to combine both visualizations (i.e. elevation & ortofoto mes
  - This map can be used to browse the topography data: https://www.arcgis.com/home/webmap/viewer.html?url=http%3A%2F%2Fags.cuzk.cz%2Farcgis%2Frest%2Fservices%2FZABAGED_POLOHOPIS%2FMapServer&source=sd
 
  - This map is good to play around with different coordinate systems in Czechia https://ags.cuzk.cz/geoprohlizec/ (click MENU upper left)
+
+ - TODO: Ortofoto pre-download (for offline usage).
