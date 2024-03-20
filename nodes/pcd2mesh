@@ -13,9 +13,9 @@ A triangular mesh is then automatically generated using open3d and pymeshfix.
 """
 
 
-from img2rgb import img2rgb
-from ros_open3d_conversion import convertCloudFromRosToOpen3d, ball_pivoting_reconstruction
-from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+from cuzk_tools.img2rgb import img2rgb
+from cuzk_tools.ros_open3d_conversion import convertCloudFromRosToOpen3d, ball_pivoting_reconstruction
+from cuzk_tools.dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
 
 from cuzk_tools.msg import OrtoImage
 from geometry_msgs.msg import Point, Vector3

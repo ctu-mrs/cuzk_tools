@@ -1,3 +1,4 @@
+# coding=utf8
 """
 The source code for the 'elevation' node.
 
@@ -30,9 +31,9 @@ import json
 import numpy as np
 import os
 
-from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
-from orto import get_img
-from img2rgb import img2rgb
+from cuzk_tools.dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+from cuzk_tools.orto import get_img
+from cuzk_tools.img2rgb import img2rgb
 
 class UnsupportedFrameError(Exception):
     pass
@@ -44,7 +45,7 @@ class Elevation:
         self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/elevation/"
 
         if not os.path.exists(self.cache_dir):
-            os.mkdir(self.cache_dir)
+            os.makedirs(self.cache_dir, exist_ok=True)
 
         self.elev_data_parser = Dmr5gParser(self.cache_dir)
 
@@ -117,8 +118,8 @@ class Elevation:
 
             try:
                 tile_data = self.elev_data_parser.get_tile_data(fn)
-            except:
-                rospy.logwarn("Cannot open tile file (likely because it hasn't been downloaded).")
+            except Exception as e:
+                rospy.logwarn("Cannot open tile file (likely because it hasn't been downloaded). Error: " + str(e))
             else:
                 sjtsk_data = np.concatenate((sjtsk_data,tile_data))
 

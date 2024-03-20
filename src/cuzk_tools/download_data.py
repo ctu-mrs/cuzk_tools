@@ -1,8 +1,8 @@
 import os
 import numpy as np
 
-from dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
-from elevation_class import UnsupportedFrameError
+from cuzk_tools.dmr5g import Dmr5gParser, WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+from cuzk_tools.elevation_class import UnsupportedFrameError
 
 
 class Dmr5gDownloader():

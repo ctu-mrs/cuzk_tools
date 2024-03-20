@@ -4,7 +4,7 @@
 For more info see elecation_class.py.
 """
 
-from elevation_class import Elevation
+from cuzk_tools.elevation_class import Elevation
 import rospy
 
 if __name__ == "__main__":

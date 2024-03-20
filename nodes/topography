@@ -27,10 +27,10 @@ import xml.etree.ElementTree as ET
 import urllib.request
 import shapely.geometry as shap
 
-from gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str, original_categories_str
-from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
+from cuzk_tools.gpkg_parser import XMIN,YMIN,XMAX,YMAX,H,W, get_rects, categories_str, original_categories_str
+from cuzk_tools.dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans
 
-from interpolate_elevation import interpolate_elevation
+from cuzk_tools.interpolate_elevation import interpolate_elevation
 
 SCALE = 1/100
 DATA_PATH = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/data.gpkg"
@@ -60,7 +60,7 @@ and is around 12 GB. Download it manually like this (yes, the process seems stra
         self.cache_dir = os.environ['HOME'] + "/.ros/cache/cuzk_tools/topography/gpkg_files/"
 
         if not os.path.exists(self.cache_dir):
-            os.mkdir(self.cache_dir)
+            os.makedirs(self.cache_dir, exist_ok=True)
 
         self.utm_zone = default_utm_zone
         self.sjtsk2utm = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
@@ -87,7 +87,11 @@ and is around 12 GB. Download it manually like this (yes, the process seems stra
         self.sjtsk2utm = get_sjtsk_to_utm_trans(self.utm_zone[2], self.utm_zone[:2])
 
     def get_categories_str(self, data_dir):
-        some_file = data_dir + os.listdir(data_dir)[0]
+        files = os.listdir(data_dir)
+        if len(files) == 0:
+            print("No data layers found. Defaulting to reduced categories.")
+            return categories_str
+        some_file = data_dir + files[0]
         if len(fiona.listlayers(some_file)) == 3*len(categories_str):
             return categories_str
         elif len(fiona.listlayers(some_file)) == 3*len(original_categories_str):

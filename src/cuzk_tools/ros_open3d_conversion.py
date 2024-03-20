@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """
     TAKEN FROM https://github.com/felixchenfy/open3d_ros_pointcloud_conversion
     ALTERED VERY SLIGHTLY TO WORK WITH CURRENT VERSIONS OF PACKAGES

@@ -3,8 +3,8 @@
 
     <rosparam file="$(find cuzk_tools)/config/geomap_colours.yaml" />
 
-    <node pkg="tf2_ros" type="static_transform_publisher" name="static_tf_fake" args="428333 5539106 0 0 0 0 utm utm_local" />
-    <node pkg="tf2_ros" type="static_transform_publisher" name="base_link_utm_local_fake" args="42202 -29073 0 0 0 0 utm_local base_link_fake" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="static_tf_fake" args="642355.893 5470259.401 500 0 0 0 utm utm_local" />
+    <node pkg="tf2_ros" type="static_transform_publisher" name="base_link_utm_local_fake" args="0 0 0 0 0 0 utm_local base_link_fake" />
 
     <node pkg="rviz" type="rviz" name="rviz" args="-d $(find cuzk_tools)/rviz/elev_topo.rviz" output="screen">
     </node>

@@ -230,83 +230,86 @@ def split_gpkg_into_files(gpkg_file, fn_preposition, use_original_categories):
         category_str = categories_str_to_use[i]
 
         c = 0
-                
+
         for layer_name in tqdm(category):
 
-            with fiona.open(gpkg_file, layer=layer_name) as layer:
+            try:
+                with fiona.open(gpkg_file, layer=layer_name) as layer:
 
-                print("\nLayer    : {}".format(layer_name))
-                print("Num items: {:,}".format(len(layer)))               
-            
-                for feature in tqdm(layer):
+                    print("\nLayer    : {}".format(layer_name))
+                    print("Num items: {:,}".format(len(layer)))
 
-                    if layer_name == 'Ulice':
-                        if category_str == 'roads':
-                            if not feature['properties']['typulice_k'] in typulice_dict[category_str]:
-                                continue
+                    for feature in tqdm(layer):
 
-                        elif category_str == 'footways':
-                            if not feature['properties']['typulice_k'] in typulice_dict[category_str]:
-                                continue
-                        
+                        if layer_name == 'Ulice':
+                            if category_str == 'roads':
+                                if not feature['properties']['typulice_k'] in typulice_dict[category_str]:
+                                    continue
+
+                            elif category_str == 'footways':
+                                if not feature['properties']['typulice_k'] in typulice_dict[category_str]:
+                                    continue
+
+                            else:
+                                raise NotImplementedError("This should not happen, probably some new type of ulice has been used. Edit 'typulice_dict'.")
+
+                        coords = feature['geometry']['coordinates']
+                        geom_type = feature['geometry']['type']
+
+                        if geom_type == 'Point':
+                            coords_x_min = coords[0]
+                            coords_y_min = coords[1]
+                            coords_x_max = coords[0]
+                            coords_y_max = coords[1]
+
+                        elif geom_type == 'MultiLineString':
+                            coords = np.array(coords)[0]
+                            coords_x_min = np.min(coords[:, 0])
+                            coords_y_min = np.min(coords[:, 1])
+                            coords_x_max = np.max(coords[:, 0])
+                            coords_y_max = np.max(coords[:, 1])
+
+                        elif geom_type == 'MultiPolygon':
+
+                            if len(coords[0]) > 1:
+                                # The first array is the outer polygon; the following ones are 'holes' inside the former.
+                                coords = np.array(coords[0][0])
+
+                                coords_x_min = np.min(coords[:, 0])
+                                coords_y_min = np.min(coords[:, 1])
+                                coords_x_max = np.max(coords[:, 0])
+                                coords_y_max = np.max(coords[:, 1])
+
+                            else:
+                                coords = np.array(coords)[0, 0]
+
+                                coords_x_min = np.min(coords[:, 0])
+                                coords_y_min = np.min(coords[:, 1])
+                                coords_x_max = np.max(coords[:, 0])
+                                coords_y_max = np.max(coords[:, 1])
+
                         else:
-                            raise NotImplementedError("This should not happen, probably some new type of ulice has been used. Edit 'typulice_dict'.")
+                            raise TypeError("Expected types are MultiLineString, MultiPolygon and Point. Got {} instead.".format(geom_type))
 
-                    coords = feature['geometry']['coordinates']
-                    geom_type = feature['geometry']['type']
+                        rects = get_rects(coords_x_min, coords_y_min, coords_x_max, coords_y_max, H, W)
 
-                    if geom_type == 'Point':
-                        coords_x_min = coords[0]
-                        coords_y_min = coords[1]
-                        coords_x_max = coords[0]
-                        coords_y_max = coords[1]
+                        feature['properties'] = OrderedDict(fid_zbg=feature['properties']['fid_zbg'])
 
-                    elif geom_type == 'MultiLineString':
-                        coords = np.array(coords)[0]
-                        coords_x_min = np.min(coords[:,0])
-                        coords_y_min = np.min(coords[:,1])
-                        coords_x_max = np.max(coords[:,0])
-                        coords_y_max = np.max(coords[:,1])
+                        for rect in rects:
+                            data[rect][geom_type].append(feature)
 
-                    elif geom_type == 'MultiPolygon':
+                        c += 1
 
-                        if len(coords[0]) > 1:
-                            # The first array is the outer polygon; the following ones are 'holes' inside the former.
-                            coords = np.array(coords[0][0])
-        
-                            coords_x_min = np.min(coords[:,0])
-                            coords_y_min = np.min(coords[:,1])
-                            coords_x_max = np.max(coords[:,0])
-                            coords_y_max = np.max(coords[:,1])
-                                                    
-                        else:
-                            coords = np.array(coords)[0,0]
+                        if c >= RAM_LIMIT:
+                            print("Data taking a lot of RAM. Preemptively relieving (this is not a bad thing, it is bound to happen a few times).")
 
-                            coords_x_min = np.min(coords[:,0])
-                            coords_y_min = np.min(coords[:,1])
-                            coords_x_max = np.max(coords[:,0])
-                            coords_y_max = np.max(coords[:,1])
-                        
-                    else:
-                        raise TypeError("Expected types are MultiLineString, MultiPolygon and Point. Got {} instead.".format(geom_type))
+                            write_to_file(data, fn_preposition, category_str)
 
-                    rects = get_rects(coords_x_min, coords_y_min, coords_x_max, coords_y_max,H,W)
-
-                    feature['properties'] = OrderedDict(fid_zbg=feature['properties']['fid_zbg'])
-
-                    for rect in rects:
-                        data[rect][geom_type].append(feature)
-
-                    c += 1
-
-                    if c >= RAM_LIMIT:
-                        print("Data taking a lot of RAM. Preemptively relieving (this is not a bad thing, it is bound to happen a few times).")
-                        
-                        write_to_file(data,fn_preposition,category_str)
-                        
-                        del data
-                        data = defaultdict(lambda: defaultdict(list))
-                        c = 0
+                            del data
+                            data = defaultdict(lambda: defaultdict(list))
+                            c = 0
+            except ValueError:
+                pass
 
         print("Writing into files.")
         write_to_file(data,fn_preposition,category_str)

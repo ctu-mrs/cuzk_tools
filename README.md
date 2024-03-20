@@ -56,7 +56,7 @@ The latter is also used in the elevation service provided by this node.
 `roslaunch cuzk_tools elevation.launch`
 
 2. Call the elevation service:
-```
+```bash
 rosservice call /elevation_publish "point: {x: 14.0, y: 50.0, z: 0.0}
   radius: {data: 300.0}
   sjtsk: {data: false}
@@ -72,7 +72,7 @@ where **x** is the **longitude** (!!!), **y** is the **latitude** (!!!) in WGS84
 
 #### Example Service Calls
 
-```
+```bash
 rosservice call /elevation_get "point: {x: 14.0, y: 50.0, z: 0.0}
   radius: {data: 400.0}
   sjtsk: {data: false}
@@ -81,7 +81,7 @@ rosservice call /elevation_get "point: {x: 14.0, y: 50.0, z: 0.0}
   wgs: {data: false}"
 ```
 
-```
+```bash
 rosservice call /elevation_publish "point: {x: 14.0, y: 50.0, z: 0.0}
   radius: {data: 400.0}
   sjtsk: {data: false}
@@ -90,7 +90,7 @@ rosservice call /elevation_publish "point: {x: 14.0, y: 50.0, z: 0.0}
   wgs: {data: true}"
 ```
 
-```
+```bash
 rosservice call /geopoint_elevation_get "point:
   latitude: 50.0
   longitude: 14.0
@@ -99,7 +99,7 @@ frame:
   data: 'wgs'" 
 ```
 
-```
+```bash
 rosservice call /point_elevation_get "point:
   x: 21.0
   y: 42.0
@@ -108,7 +108,7 @@ frame:
   data: 'utm_local'" 
 ```
 
-```
+```bash
 rosservice call /set_elevation_tf "frame:
   data: 'base_link'" 
 ```
@@ -134,7 +134,8 @@ The data is stored in a single file, containing the entirety of Czechia (with th
 6. Launch `roslaunch cuzk_tools topography.launch`
 
 7. Call topography service:
-```rosservice call /topography "point:
+```bash
+rosservice call /topography "point:
   x: 14.0
   y: 50.0
   z: 0.0
@@ -152,6 +153,28 @@ As with the elevation node, the input point is in WGS coordinates (x=long (!!!),
 ### Elevation with Topography
 
 If you are looking to combine both visualizations (i.e. elevation & ortofoto mesh with topography markers) you can run `elev_topo.launch`. You then call the `elevation_publish` and `topography` services as indicated above and both visualizations should appear in rviz.
+
+Example commands:
+
+```bash
+rosservice call /topography "point:
+  x: 16.9610800
+  y: 49.3802000
+  z: 0.0
+radius:
+  data: 500.0
+frame:
+  data: 'utm_local'" 
+
+rosservice call /elevation_publish "point: {x: 16.9610800, y: 49.380200, z: 500.0}
+radius: {data: 500.0}
+sjtsk: {data: false}
+utm: {data: false}
+utm_local: {data: true}
+wgs: {data: false}"
+
+rosrun tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link_fake base_link
+```
 
 ### Remarks
  - The topography node produces a GeographicMap for the ZABAGED data. It should be relatively simple to use a different GeographicMap source together with the visualization (e.g. OSM data). The categories that I use with ZABAGED (I reduce their 139 categories to 11 custom ones) should overlap well with OSM.

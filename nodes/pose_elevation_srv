@@ -22,8 +22,8 @@ from scipy.spatial import cKDTree
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 
 
-from dmr5g import Dmr5gParser, WGS_TO_SJTSK, get_utm_to_sjtsk_trans
-from elevation_class import Elevation,UnsupportedFrameError
+from cuzk_tools.dmr5g import Dmr5gParser, WGS_TO_SJTSK, get_utm_to_sjtsk_trans
+from cuzk_tools.elevation_class import Elevation,UnsupportedFrameError
 
 
 class PoseElevation(Elevation):

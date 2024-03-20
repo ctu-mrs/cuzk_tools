@@ -11,7 +11,7 @@ each point elevation is interpolated from the known data. The coloured xyz point
 the mesh. 
 """
 
-from dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans, get_wgs_to_utm_trans
+from cuzk_tools.dmr5g import WGS_TO_SJTSK, SJTSK_TO_WGS, get_sjtsk_to_utm_trans, get_utm_to_sjtsk_trans, get_wgs_to_utm_trans
 
 from cuzk_tools.msg import OrtoImage
 from geometry_msgs.msg import Point, Vector3
@@ -26,7 +26,7 @@ from PIL import Image
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 import tf2_ros
 
-from interpolate_elevation import interpolate_elevation
+from cuzk_tools.interpolate_elevation import interpolate_elevation
 
 class UnsupportedFrameError(Exception):
     pass
